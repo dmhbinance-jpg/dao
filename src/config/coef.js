@@ -40,8 +40,8 @@
       critDmgPerAgi: 0.002,     // 敏 100 → +0.2
       dodgeRatePerAgi: 0.0,     // 文档提到敏→闪避，但同时要求无随机浮动；V0 默认关闭，见 DESIGN_QUESTIONS
       dodgeRateCap: 0.3,
-      hpBase: 200,       // 气血 = (hpBase + hpPerLevel × 等级) × 定位倍率；阶段 0 起改为低等级友好的曲线
-      hpPerLevel: 60,
+      hpBase: 360,       // 气血 = (hpBase + hpPerLevel × 等级) × 定位倍率；阶段 0 起改为低等级友好的曲线
+      hpPerLevel: 110,
     },
 
     // ===== 五个乘区 =====

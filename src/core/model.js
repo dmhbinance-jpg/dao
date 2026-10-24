@@ -218,7 +218,7 @@
     lineup.forEach((entry, i) => {
       // 三种来源：内联角色（玩家角色）/ V0 角色模板 / 敌人模板
       const id = entry.charId || entry.enemyId || (entry.char && entry.char.id);
-      const tpl = entry.char || (entry.enemyId ? ((DAO.CONFIG.stage0 || {}).enemies || {})[entry.enemyId] : DAO.CONFIG.characters[entry.charId]);
+      const tpl = entry.char || (entry.enemyId ? ((DAO.CONFIG.game || {}).enemies || {})[entry.enemyId] : DAO.CONFIG.characters[entry.charId]);
       if (!tpl) throw new Error('未知角色: ' + id);
       const ch = Object.assign(clone(tpl), entry.override ? clone(entry.override) : {});
       if (entry.level != null) ch.level = entry.level;

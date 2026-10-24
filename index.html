@@ -8,15 +8,20 @@
 <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="src/ui/style.css">
 </head>
-<body class="s0">
-<header class="top">
-  <div class="brand"><span class="seal">道</span><div><b>青石山</b><small>阶段 0 · 单角色起步 · 数值均为占位</small></div></div>
-  <nav class="s0-nav">
+<body class="s0 s1">
+<header class="top s1-top">
+  <div class="brand"><span class="seal">道</span><div><b>青石山</b><small>阶段 1 · 洞府开门 · 数值均为占位</small></div></div>
+  <div class="s1-chips" id="chips"></div>
+  <nav class="s1-nav" id="nav"></nav>
+  <div class="s1-tools">
     <a href="v0.html" class="navlink">V0 模拟器</a>
     <button id="reset-btn" type="button">重新开始</button>
-  </nav>
+  </div>
 </header>
+<div class="activity" id="activity" hidden></div>
 <main id="app"></main>
+<div class="modal-layer" id="modal" hidden></div>
+<div class="toasts" id="toasts" aria-live="polite"></div>
 
 <!-- 加载顺序即依赖顺序（与 src/node.js 保持一致）。经典脚本，file:// 直接打开即可。 -->
 <!-- 地基 -->
@@ -27,7 +32,7 @@
 <script src="src/config/skills.js"></script>
 <script src="src/config/talents.js"></script>
 <script src="src/config/characters.js"></script>
-<script src="src/config/stage0.js"></script>
+<script src="src/config/game.js"></script>
 <!-- 地基：事件、数据模型 -->
 <script src="src/core/events.js"></script>
 <script src="src/core/model.js"></script>
@@ -37,11 +42,11 @@
 <script src="src/battle/engine.js"></script>
 <script src="src/battle/log.js"></script>
 <script src="src/battle/simulate.js"></script>
-<!-- 阶段 0 游戏逻辑（纯逻辑） -->
-<script src="src/game/stage0.js"></script>
+<!-- 游戏规则（纯逻辑） -->
+<script src="src/game/game.js"></script>
 <!-- UI -->
 <script src="src/ui/util.js"></script>
 <script src="src/ui/battleview.js"></script>
-<script src="src/ui/stage0-app.js"></script>
+<script src="src/ui/game-app.js"></script>
 </body>
 </html>
