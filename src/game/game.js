@@ -43,7 +43,7 @@
       equip: emptyEquip(),
     };
   }
-  function emptyEquip() { return { weapon: null, chest: null, ring: null }; }
+  function emptyEquip() { const o = {}; for (const sl of gearSlots()) o[sl] = null; return o; }
 
   function emptyStats() {
     return { battles: 0, wins: 0, kills: 0, expTotal: 0, goldTotal: 0, playMs: 0, pushMs: 0, idleMs: 0, oreTotal: 0, gatherCharMs: 0, forged: 0, forgeGold: 0, forgeOre: 0 };
@@ -80,6 +80,9 @@
       gather: { ids: [], last: null },
       gearBag: [],
       nextGearId: 1,
+      crafting: null,                 // 正在打造：{ line, slot, charId, cost, durMs, progressMs, last }
+      craftSeed: 1,                   // 掷品质的独立种子
+      workshops: { forge: { level: 1 } }, // 工坊等级（本阶段固定 1）
     };
   }
 
@@ -90,10 +93,11 @@
   function migrate(s, now) {
     if (!s || typeof s !== 'object') return null;
     if (s.v === cfg().saveVersion) return isValidV2(s) ? s : null;
-    if (s.v === 4) return isValidV2(s) ? migrateV4(s) : null;
-    if (s.v === 3) return isValidV2(s) ? migrateV4(migrateV3(s)) : null;
-    if (s.v === 2) return isValidV2(s) ? migrateV4(migrateV3(migrateV2(s))) : null;
-    if (s.v === 1 && s.hero && cfg().starters[s.hero.role]) return migrateV4(migrateV3(migrateV2(migrateV1(s, now))));
+    if (s.v === 5) return isValidV2(s) ? migrateV5(s) : null;
+    if (s.v === 4) return isValidV2(s) ? migrateV5(migrateV4(s)) : null;
+    if (s.v === 3) return isValidV2(s) ? migrateV5(migrateV4(migrateV3(s))) : null;
+    if (s.v === 2) return isValidV2(s) ? migrateV5(migrateV4(migrateV3(migrateV2(s)))) : null;
+    if (s.v === 1 && s.hero && cfg().starters[s.hero.role]) return migrateV5(migrateV4(migrateV3(migrateV2(migrateV1(s, now)))));
     return null;
   }
 
@@ -147,8 +151,8 @@
     s.unlocks = Object.assign({ cave: false, forge: false }, s.unlocks || {});
     s.settings = Object.assign(clone(cfg().settings), s.settings || {});
     s.stats = Object.assign(emptyStats(), s.stats || {});
-    for (const c of s.roster) c.equip = Object.assign(emptyEquip(), c.equip || {});
-    if (s.pendingRecruit) s.pendingRecruit.equip = Object.assign(emptyEquip(), s.pendingRecruit.equip || {});
+    for (const c of s.roster) c.equip = Object.assign({ weapon: null, chest: null, ring: null }, c.equip || {});
+    if (s.pendingRecruit) s.pendingRecruit.equip = Object.assign({ weapon: null, chest: null, ring: null }, s.pendingRecruit.equip || {});
     if (chapterDone(s, 'heifeng')) unlockForge(s);   // v4 的规则：第二段通关开放（v5 改到 1-8，见 migrateV4）
     return s;
   }
@@ -158,13 +162,47 @@
    * 超过的人不删，降到 10 以下之前不能招募）；采集 / 锻造房提前到 1-8；额外招募引导并进 1-8 的引导。
    */
   function migrateV4(s) {
-    s.v = cfg().saveVersion;
+    s.v = 5;
     s.recruit = { freeUsed: !!(s.recruit && s.recruit.freeUsed) };
     s.recruitChoice = s.recruitChoice || null;
     s.quota = s.quota || { extra: 0 };
     const drop = (id) => { s.guide.queue = s.guide.queue.filter((x) => x !== id); };
     if (s.guide.queue.includes('extraRecruit')) { drop('extraRecruit'); s.guide.seen.extraRecruit = true; }
     if (isCleared(s, cfg().gather.unlockStage)) unlockForge(s);
+    return s;
+  }
+
+  /**
+   * v5（阶段 3.5）→ v6（阶段 3.6）：锻造改版。档位换品质（下品 → 白、中品 → 绿、上品 → 蓝）；
+   * 戒指槽移除（以后归饰品线），穿着的戒指卸下放进背包、标「暂不可用」；加打造任务、打造种子、工坊等级。
+   */
+  function migrateV5(s) {
+    s.v = cfg().saveVersion;
+    const TQ = ['white', 'green', 'blue'];
+    const slots = gearSlots();
+    const conv = (it) => {
+      if (it.tier != null) { it.quality = TQ[it.tier] || 'white'; delete it.tier; }
+      if (!it.quality) it.quality = 'white';
+      if (!slots.includes(it.slot)) it.disabled = true;
+      return it;
+    };
+    s.gearBag = (s.gearBag || []).map(conv);
+    const fixChar = (c, toBag) => {
+      const eq = c.equip || {};
+      const out = emptyEquip();
+      for (const [slot, it] of Object.entries(eq)) {
+        if (!it) continue;
+        conv(it);
+        if (slots.includes(slot)) out[slot] = it; else if (toBag) s.gearBag.push(it);
+      }
+      c.equip = out;
+    };
+    for (const c of s.roster) fixChar(c, true);
+    if (s.pendingRecruit) fixChar(s.pendingRecruit, false);
+    if (s.recruitChoice) for (const c of s.recruitChoice.candidates) fixChar(c, false);
+    s.crafting = s.crafting || null;
+    s.craftSeed = s.craftSeed || 1;
+    s.workshops = Object.assign({ forge: { level: 1 } }, s.workshops || {});
     return s;
   }
 
@@ -237,6 +275,7 @@
   function inLineup(save, id) { return save.lineup.some((e) => e.id === id); }
   function status(save, id) {
     if (isResearching(save, id)) return 'research';
+    if (isCrafting(save, id)) return 'craft';
     if (isGathering(save, id)) return 'gather';
     if (inLineup(save, id)) return 'lineup';
     return 'idle';
@@ -332,7 +371,7 @@
   }
   function lineupSig(save) {
     // 等级或装备变了都算阵容变化（自动推关会再挑战一次最新关）
-    return lineupChars(save).map(({ char }) => char.id + ':' + char.level + (char.equip ? ':' + cfg().forge.slots.map((sl) => (char.equip[sl] ? char.equip[sl].id : '')).join('.') : '')).join(',');
+    return lineupChars(save).map(({ char }) => char.id + ':' + char.level + (char.equip ? ':' + gearSlots().map((sl) => (char.equip[sl] ? char.equip[sl].id : '')).join('.') : '')).join(',');
   }
 
   // ================= 战斗 =================
@@ -542,7 +581,8 @@
   /**
    * 招募一次（3 选 1）：付钱，用同一个招募种子生成 3 名候选，存进 save.recruitChoice 等玩家挑。
    * 首抽免费，3 名候选都是与开局角色互补的定位、都不出「流影」。
-   * @param opts { reason }：'gather' = 为采集招募（默认选力资质最高的，选完直接去采集）
+   * @param opts { reason, slot }：'gather' = 为采集招募（默认选力资质最高的，选完直接去采集）；
+   *   'craft' = 为打造招募（默认选力资质最高的，选完直接去打造 slot）
    * @returns { ok, cost, choice, error }
    */
   function recruit(save, now, opts) {
@@ -558,7 +598,7 @@
     const candidates = rollCandidates(save, R.candidates, ro);
     save.gold -= cost;
     if (free) save.recruit.freeUsed = true;
-    save.recruitChoice = { candidates, cost, free, reason: opts.reason || null, at: now || 0 };
+    save.recruitChoice = { candidates, cost, free, reason: opts.reason || null, slot: opts.slot || null, at: now || 0 };
     return { ok: true, cost, choice: save.recruitChoice };
   }
   /** 候选的综合资质（成长相对开局同定位角色的平均倍率） */
@@ -567,7 +607,7 @@
   function defaultChoice(save) {
     const ch = save.recruitChoice;
     if (!ch) return -1;
-    const key = ch.reason === 'gather' ? (c) => c.growth.str : candidateScore;
+    const key = ch.reason === 'gather' || ch.reason === 'craft' ? (c) => c.growth.str : candidateScore;
     let best = 0;
     ch.candidates.forEach((c, i) => { if (key(c) > key(ch.candidates[best]) + 1e-9) best = i; });
     return best;
@@ -591,6 +631,7 @@
     save.roster.push(c);
     const res = { ok: true, char: c, added: true };
     if (ch.reason === 'gather' && save.unlocks.forge) res.gathering = startGather(save, c.id, now);
+    else if (ch.reason === 'craft' && ch.slot) res.crafting = startCraft(save, ch.slot, c.id, now) ? ch.slot : null;
     else addToLineup(save, c.id); // 有空的上阵位就直接上阵
     return res;
   }
@@ -604,6 +645,7 @@
   function dismiss(save, id, now) {
     if (!canDismiss(save, id)) return false;
     if (isGathering(save, id)) stopGather(save, id, now, { noLineup: true });
+    if (isCrafting(save, id)) cancelCraft(save);   // 打造中：取消并退还材料
     returnGear(save, getChar(save, id));   // 身上的装备回背包
     save.roster = save.roster.filter((c) => c.id !== id);
     save.lineup = save.lineup.filter((e) => e.id !== id);
@@ -653,6 +695,7 @@
     if (!nx) return 'max';
     const c = getChar(save, charId);
     if (!c) return 'nochar';
+    if (isCrafting(save, charId)) return 'crafting';
     if (inLineup(save, charId) && save.lineup.length <= 1) return 'lastFighter';
     if (save.gold < nx.gold) return 'gold';
     return null;
@@ -731,6 +774,7 @@
     if (!c) return 'nochar';
     if (isGathering(save, id)) return 'already';
     if (isResearching(save, id)) return 'research';
+    if (isCrafting(save, id)) return 'crafting';
     if (inLineup(save, id) && save.lineup.length <= 1) return 'lastFighter';
     return null;
   }
@@ -792,22 +836,53 @@
     return info;
   }
 
-  // ================= 锻造房 / 装备 =================
-  function recipe(slot) { return cfg().forge.recipes[slot]; }
-  function forgeCost(tier) { return cfg().forge.costs[tier]; }
+  // ================= 生产线 / 品质 =================
+  const P = () => cfg().production;
+  /** 已开放的生产线 [{ id, ...line }] */
+  function lines() { return Object.entries(P().lines).filter(([, l]) => l.enabled).map(([id, l]) => Object.assign({ id }, l)); }
+  /** 角色身上能穿的装备部位（已开放生产线的部位；本阶段 = 武器、胸甲） */
+  function gearSlots() { return lines().reduce((a, l) => a.concat(l.slots), []); }
+  function lineOfSlot(slot) { const e = Object.entries(P().lines).find(([, l]) => l.slots.includes(slot)); return e ? e[0] : null; }
+  function slotName(slot) { return P().slotNames[slot] || slot; }
+  function qualities() { return P().qualities; }
+  function qualityIndex(id) { return qualities().findIndex((q) => q.id === id); }
+  function qualityOf(id) { return qualities()[qualityIndex(id)] || qualities()[0]; }
+  /** 工坊等级（本阶段固定 1，升级以后做；存档 workshops[线].level） */
+  function workshopLevel(save, lineId) { return ((save.workshops || {})[lineId] || {}).level || 1; }
+  function qualityTable(save, lineId) {
+    const T = P().qualityTables;
+    return T[workshopLevel(save, lineId)] || T[1];
+  }
+  /** 掷品质：独立的打造种子（hashSeed('craft:' + craftSeed)，每掷 +1），同种子同结果 */
+  function rollQuality(save, lineId) {
+    const rng = new DAO.RNG(DAO.hashSeed('craft:' + save.craftSeed));
+    save.craftSeed++;
+    const table = qualityTable(save, lineId);
+    const total = table.reduce((a, b) => a + b, 0);
+    let x = rng.next() * total;
+    for (let i = 0; i < table.length; i++) { x -= table[i]; if (x < 0 && table[i] > 0) return qualities()[i].id; }
+    return qualities()[0].id;
+  }
+
+  // ================= 锻造 / 装备 =================
+  /** 部位配方（所在生产线的 recipes；本阶段只有锻造线） */
+  function recipe(slot) { const l = lineOfSlot(slot); return (l && cfg()[l] && cfg()[l].recipes && cfg()[l].recipes[slot]) || null; }
+  function craftCost(slot) { const r = recipe(slot); return r ? r.cost : null; }
   function mainStat(c) { return c.role === 'mage' ? 'int' : 'str'; }
-  /** 一件装备的加成（数值按配置表现算，调表后老装备跟着变） */
+  /** 装备能不能用：部位所在的生产线开放了、配方存在、没被标成「暂不可用」 */
+  function gearUsable(item) { return !!item && !item.disabled && gearSlots().includes(item.slot) && !!recipe(item.slot); }
+  /** 一件装备的加成 = 基础数值 × 品质倍率（按配置表现算，调表后老装备跟着变） */
   function gearStats(item) {
-    const r = recipe(item.slot);
-    const t = r && r.tiers[item.tier];
-    if (!t) return {};
-    if (item.slot === 'ring') return { [item.stat]: t.value };
-    return Object.assign({}, t);
+    if (!gearUsable(item)) return {};
+    const r = recipe(item.slot), m = qualityOf(item.quality).mult;
+    const out = {};
+    for (const [k, v] of Object.entries(r.base)) out[k] = Math.round(v * m);
+    return out;
   }
   function gearBonus(equip) {
     const out = {};
     if (!equip) return out;
-    for (const slot of cfg().forge.slots) {
+    for (const slot of gearSlots()) {
       const it = equip[slot];
       if (!it) continue;
       for (const [k, v] of Object.entries(gearStats(it))) out[k] = (out[k] || 0) + v;
@@ -815,45 +890,127 @@
     return out;
   }
   function gearName(item) {
-    const F = cfg().forge;
-    const statName = { str: '力', agi: '敏', int: '智' };
-    return F.tierNames[item.tier] + recipe(item.slot).name + (item.slot === 'ring' ? '·' + statName[item.stat] : '');
+    const r = recipe(item.slot);
+    return `${qualityOf(item.quality).name}·${r ? r.name : slotName(item.slot)}${gearUsable(item) ? '' : '（暂不可用）'}`;
   }
-  function forgeBlock(save, slot, tier) {
+  /** 同部位比较：品质高的更好 */
+  function gearRank(item) { return item ? qualityIndex(item.quality) : -1; }
+
+  // ---- 打造（占用角色、要时间） ----
+  function isCrafting(save, id) { return !!(save.crafting && save.crafting.charId === id); }
+  /** 打造时长 = baseSec ÷ (1 + 打造值 × statCoef)，打造值 = 打造者在这条线用的三维（锻造用力） */
+  function craftDurationMs(save, slot, charId) {
+    const r = recipe(slot), c = getChar(save, charId);
+    if (!r || !c) return 0;
+    const line = P().lines[lineOfSlot(slot)];
+    const v = charUnit(c).base[line.stat] || 0;
+    return Math.round((r.baseSec * 1000) / (1 + v * P().craft.statCoef));
+  }
+  /** 不能打造的原因（null = 可以）。charId 省略时只看资源和工坊 */
+  function craftBlock(save, slot, charId) {
     if (!save.unlocks.forge) return 'locked';
-    const c = forgeCost(tier);
-    if (!recipe(slot) || !c) return 'invalid';
-    if (save.ore < c.ore) return 'ore';
-    if (save.gold < c.gold) return 'gold';
+    const r = recipe(slot);
+    if (!r || !gearSlots().includes(slot)) return 'invalid';
+    if (save.crafting) return 'busy';
+    if (save.ore < r.cost.ore) return 'ore';
+    if (save.gold < r.cost.gold) return 'gold';
+    if (charId === undefined) return null;
+    const c = getChar(save, charId);
+    if (!c) return 'nochar';
+    if (isResearching(save, charId)) return 'research';
+    if (inLineup(save, charId) && save.lineup.length <= 1) return 'lastFighter';
     return null;
   }
-  /** 即时打造一件，放进背包。opts.stat：戒指的三维（默认力） */
-  function forge(save, slot, tier, opts) {
-    if (forgeBlock(save, slot, tier)) return null;
-    const c = forgeCost(tier);
-    save.ore -= c.ore;
-    save.gold -= c.gold;
+  /** 开始打造：扣材料，打造者离开上阵 / 采集（打完回到闲置） */
+  function startCraft(save, slot, charId, now) {
+    if (craftBlock(save, slot, charId)) return false;
     const r = recipe(slot);
-    const item = { id: 'g' + save.nextGearId++, slot, tier };
-    if (slot === 'ring') item.stat = r.stats.includes(opts && opts.stat) ? opts.stat : r.stats[0];
-    save.gearBag.push(item);
-    save.stats.forged++;
-    save.stats.forgeGold += c.gold;
-    save.stats.forgeOre += c.ore;
-    return item;
+    if (isGathering(save, charId)) stopGather(save, charId, now, { noLineup: true });
+    if (inLineup(save, charId)) removeFromLineup(save, charId);
+    save.ore -= r.cost.ore;
+    save.gold -= r.cost.gold;
+    save.crafting = { line: lineOfSlot(slot), slot, charId, cost: clone(r.cost), durMs: craftDurationMs(save, slot, charId), progressMs: 0, last: now };
+    return true;
   }
+  /** 按游戏时钟推进打造；打完掷品质、放进装备背包、打造者回到闲置。离线不计算（页面打开时 resumeCraft）。 */
+  function tickCraft(save, now) {
+    const j = save.crafting;
+    if (!j) return null;
+    if (j.last == null) j.last = now;
+    j.progressMs += Math.max(0, now - j.last);
+    j.last = now;
+    if (j.progressMs < j.durMs) return null;
+    const item = { id: 'g' + save.nextGearId++, slot: j.slot, quality: rollQuality(save, j.line) };
+    save.gearBag.push(item);
+    save.crafting = null;
+    save.stats.forged++;
+    save.stats.forgeGold += j.cost.gold;
+    save.stats.forgeOre += j.cost.ore;
+    if (!save.guide.seen.equipFirst) queueGuide(save, 'equipFirst');
+    return { item, charId: j.charId };
+  }
+  function resumeCraft(save, now) { if (save.crafting) save.crafting.last = now; }
+  function craftRemainingMs(save) { const j = save.crafting; return j ? Math.max(0, j.durMs - j.progressMs) : 0; }
+  /** 取消打造：退还材料，打造者回到闲置 */
+  function cancelCraft(save) {
+    const j = save.crafting;
+    if (!j) return null;
+    save.ore += j.cost.ore;
+    save.gold += j.cost.gold;
+    save.crafting = null;
+    return j.charId;
+  }
+  /** 派谁去打造：闲置里打造值（锻造 = 力）最高的 → 采集中力最高的（采集停下）→ null */
+  function pickCrafter(save, slot) {
+    const stat = (P().lines[lineOfSlot(slot || 'weapon')] || {}).stat || 'str';
+    const v = (c) => charUnit(c).base[stat];
+    const pick = (list) => list.sort((a, b) => v(b) - v(a))[0];
+    const idle = save.roster.filter((c) => status(save, c.id) === 'idle');
+    if (idle.length) return pick(idle).id;
+    const gat = save.roster.filter((c) => isGathering(save, c.id));
+    return gat.length ? pick(gat).id : null;
+  }
+  /**
+   * 派人去打造的办法，按默认顺序：闲置里力最高的 → 招募一位（3 选 1，选完直接去打造；名额够、金币够招募 + 打造）→
+   * 调一个采集的人（采集停下）→ 上阵里非开局角色中等级最低的。
+   */
+  function craftOptions(save, slot) {
+    const out = [];
+    const v = (c) => charUnit(c).base[(P().lines[lineOfSlot(slot)] || {}).stat || 'str'];
+    const idle = save.roster.filter((c) => status(save, c.id) === 'idle').sort((a, b) => v(b) - v(a));
+    if (idle.length) out.push({ mode: 'idle', charId: idle[0].id });
+    const cost = craftCost(slot);
+    if (canRecruit(save) && cost && save.gold >= recruitCost(save) + cost.gold) out.push({ mode: 'recruit', cost: recruitCost(save) });
+    const gat = save.roster.filter((c) => isGathering(save, c.id)).sort((a, b) => v(b) - v(a));
+    if (gat.length) out.push({ mode: 'gather', charId: gat[0].id });
+    if (save.lineup.length > 1) {
+      const l = lineupChars(save).map((x) => x.char).filter((c) => c.origin !== 'starter').sort((a, b) => a.level - b.level);
+      if (l.length) out.push({ mode: 'lineup', charId: l[0].id });
+    }
+    return out;
+  }
+  /** 按办法派人去打造；招募的话先出 3 选 1，选完 chooseRecruit 会直接开工 */
+  function doCraftPlan(save, slot, plan, now) {
+    if (!plan) return null;
+    if (plan.mode === 'recruit') {
+      const r = recruit(save, now, { reason: 'craft', slot });
+      return r.ok ? { recruit: r } : null;
+    }
+    return startCraft(save, slot, plan.charId, now) ? { charId: plan.charId } : null;
+  }
+
   /** 找装备：在背包或某个角色身上 */
   function findGear(save, gearId) {
     const i = save.gearBag.findIndex((g) => g.id === gearId);
     if (i >= 0) return { item: save.gearBag[i], owner: null };
-    for (const c of save.roster) for (const slot of cfg().forge.slots) if (c.equip[slot] && c.equip[slot].id === gearId) return { item: c.equip[slot], owner: c };
+    for (const c of save.roster) for (const slot of Object.keys(c.equip || {})) if (c.equip[slot] && c.equip[slot].id === gearId) return { item: c.equip[slot], owner: c };
     return null;
   }
-  /** 穿上（可以从背包，也可以从别的角色身上换过来）；原来那件回背包 */
+  /** 穿上（可以从背包，也可以从别的角色身上换过来）；原来那件回背包。暂不可用的装备穿不上。 */
   function equip(save, charId, gearId) {
     const c = getChar(save, charId);
     const f = findGear(save, gearId);
-    if (!c || !f) return false;
+    if (!c || !f || !gearUsable(f.item)) return false;
     if (f.owner && f.owner.id === c.id) return true;
     const slot = f.item.slot;
     if (f.owner) f.owner.equip[slot] = null;
@@ -871,64 +1028,61 @@
   }
   function returnGear(save, c) {
     if (!c || !c.equip) return;
-    for (const slot of cfg().forge.slots) if (c.equip[slot]) { save.gearBag.push(c.equip[slot]); c.equip[slot] = null; }
+    for (const slot of Object.keys(c.equip)) if (c.equip[slot]) { save.gearBag.push(c.equip[slot]); c.equip[slot] = null; }
   }
-  function forgeAndEquip(save, charId, slot, tier, stat) {
-    const c = getChar(save, charId);
-    const item = forge(save, slot, tier, { stat: stat || (c ? mainStat(c) : 'str') });
-    if (item && c) equip(save, charId, item.id);
-    return item;
+  /** 背包里这件给谁穿最合适：上阵角色里这个部位空着或品质最低的（并列取上阵顺序靠前的）；没人比它差就 null */
+  function bestWearer(save, item) {
+    if (!gearUsable(item)) return null;
+    let best = null;
+    for (const { char } of lineupChars(save)) {
+      const cur = char.equip[item.slot];
+      if (gearRank(cur) >= gearRank(item)) continue;
+      if (!best || gearRank(cur) < gearRank(best.equip[item.slot])) best = char;
+    }
+    return best ? best.id : null;
   }
   /**
-   * 下一件该做的装备（活动条提示 / 卡关引导 / 标准玩家用）：一档一档往上补——先让每个上阵角色的武器、胸甲、戒指
-   * 都有下品，再都换中品，再换上品；同一档按上阵顺序 × 武器、胸甲、戒指。背包里有更好的就直接穿（不花钱）。
-   * @returns { kind: 'equip'|'forge', charId, slot, tier, stat?, gearId?, cost?, affordable } 或 null
+   * 下一步装备建议（活动条提示 / 卡关引导 / 标准玩家用），按部位，不分档位：
+   *  1. 背包里有比上阵角色身上更好的 → 穿上（不花钱）
+   *  2. 否则打造：先补上阵角色空着的部位（上阵顺序 × 武器、胸甲），都有了就补品质最低的那个部位
+   * @returns { kind: 'equip', charId, slot, gearId, affordable: true } | { kind: 'craft', slot, charId（给谁做）, crafter, cost, affordable } | null
    */
   function nextUpgrade(save) {
     if (!save.unlocks.forge) return null;
-    const F = cfg().forge;
-    const top = F.costs.length - 1;
-    const chars = lineupChars(save).map((x) => x.char);
-    for (let target = 0; target <= top; target++) {
-      for (const c of chars) {
-        for (const slot of F.slots) {
-          const cur = c.equip[slot];
-          const curTier = cur ? cur.tier : -1;
-          if (curTier >= target) continue;
-          const want = mainStat(c);
-          const better = save.gearBag.filter((g) => g.slot === slot && g.tier > curTier && (slot !== 'ring' || g.stat === want)).sort((a, b) => b.tier - a.tier)[0];
-          if (better) return { kind: 'equip', charId: c.id, slot, tier: better.tier, gearId: better.id, affordable: true };
-          const cost = forgeCost(target);
-          return { kind: 'forge', charId: c.id, slot, tier: target, stat: slot === 'ring' ? want : undefined, cost, affordable: !forgeBlock(save, slot, target) };
-        }
-      }
+    const bag = save.gearBag.filter(gearUsable).sort((a, b) => gearRank(b) - gearRank(a));
+    for (const it of bag) {
+      const w = bestWearer(save, it);
+      if (w) return { kind: 'equip', charId: w, slot: it.slot, gearId: it.id, affordable: true };
     }
-    return null;
+    const chars = lineupChars(save).map((x) => x.char);
+    let target = null;
+    for (const c of chars) for (const slot of gearSlots()) if (!target && !c.equip[slot]) target = { c, slot };
+    if (!target) for (const c of chars) for (const slot of gearSlots()) if (!target || gearRank(c.equip[slot]) < gearRank(target.c.equip[target.slot])) target = { c, slot };
+    if (!target) return null;
+    const crafter = pickCrafter(save, target.slot);
+    return { kind: 'craft', slot: target.slot, charId: target.c.id, crafter, cost: craftCost(target.slot), affordable: !!crafter && !craftBlock(save, target.slot, crafter) };
   }
-  function doUpgrade(save, u) {
+  function doUpgrade(save, u, now) {
     if (!u || !u.affordable) return null;
     if (u.kind === 'equip') return equip(save, u.charId, u.gearId) ? findGear(save, u.gearId).item : null;
-    return forgeAndEquip(save, u.charId, u.slot, u.tier, u.stat);
+    return startCraft(save, u.slot, u.crafter, now) ? { crafting: u.slot, charId: u.crafter } : null;
   }
-  /** 活动条提示：灵矿和金币够打下一件时返回建议（不打断推关） */
+  /** 活动条提示（不打断推关）：有新装备可穿，或者材料够、有人能去打造 */
   function forgeHint(save) {
     if (!save.settings.forgeHints) return null;
     const u = nextUpgrade(save);
-    return u && u.kind === 'forge' && u.affordable ? u : null;
+    return u && u.affordable ? u : null;
   }
-  /** 现在的灵矿和金币一口气能做完的升级（不改存档），卡关引导的预览用 */
-  function planUpgrades(save) {
+  /** 现在一口气能做的装备动作（不改存档），卡关引导的预览用 */
+  function planUpgrades(save, now) {
     const s = clone(save);
     const out = [];
-    for (let u = nextUpgrade(s), g = 0; u && u.affordable && g < 20; u = nextUpgrade(s), g++) {
-      out.push(u);
-      doUpgrade(s, u);
-    }
+    for (let u = nextUpgrade(s), g = 0; u && u.affordable && g < 20; u = nextUpgrade(s), g++) { out.push(u); doUpgrade(s, u, now || 0); }
     return out;
   }
-  function doAllUpgrades(save) {
+  function doAllUpgrades(save, now) {
     const out = [];
-    for (let u = nextUpgrade(save), g = 0; u && u.affordable && g < 20; u = nextUpgrade(save), g++) out.push(Object.assign({ item: doUpgrade(save, u) }, u));
+    for (let u = nextUpgrade(save), g = 0; u && u.affordable && g < 20; u = nextUpgrade(save), g++) out.push(Object.assign({ item: doUpgrade(save, u, now) }, u));
     return out;
   }
   function unlockForge(save) {
@@ -1103,8 +1257,12 @@
       return u && u.affordable ? null : 'ore';
     }
     if (id === 'forge') {
-      if (Object.values(gearAll(save)).length) return null;
-      return forgeBlock(save, cfg().forge.guideSlot, cfg().forge.guideTier);
+      if (gearAll(save).length || save.crafting) return null;   // 已经有装备 / 正在打：确认后直接关掉
+      if (save.recruitChoice || save.pendingRecruit) return 'choosing';
+      const slot = cfg().forge.guideSlot;
+      const blk = craftBlock(save, slot);
+      if (blk) return blk;
+      return craftOptions(save, slot).length ? null : 'nochar';
     }
     if (id === 'research') {
       if (save.research.active || save.research.slots >= 2) return null;
@@ -1119,17 +1277,17 @@
   /** 玩家已经有的全部装备（背包 + 身上） */
   function gearAll(save) {
     const out = save.gearBag.slice();
-    for (const c of save.roster) for (const slot of cfg().forge.slots) if (c.equip && c.equip[slot]) out.push(c.equip[slot]);
+    for (const c of save.roster) for (const slot of Object.keys(c.equip || {})) if (c.equip[slot]) out.push(c.equip[slot]);
     return out;
   }
-  /** 锻造引导给谁穿：开局角色在上阵就给他，否则第一个上阵角色 */
-  function forgeGuideTarget(save) {
-    const st = starter(save);
-    if (inLineup(save, st.id)) return st.id;
-    return save.lineup[0] ? save.lineup[0].id : st.id;
+  /** 「穿上第一件装备」：背包里最好的一件，和最需要它的上阵角色 */
+  function firstEquipPlan(save) {
+    const bag = save.gearBag.filter(gearUsable).sort((a, b) => gearRank(b) - gearRank(a));
+    for (const it of bag) { const w = bestWearer(save, it); if (w) return { gearId: it.id, charId: w }; }
+    return null;
   }
   /**
-   * @param opts { plan }：采集引导里玩家选的办法（默认 gatherPlan）
+   * @param opts { plan }：采集 / 打造引导里玩家选的办法（默认 gatherPlan / craftOptions 的第一个）
    */
   function ackGuide(save, id, now, opts) {
     guideNow = now || Date.now();
@@ -1161,19 +1319,22 @@
       }
       queueGuide(save, 'forge');
     } else if (id.startsWith('gearUp:')) {
-      info.upgrades = doAllUpgrades(save);
+      info.upgrades = doAllUpgrades(save, now);
     } else if (id === 'moreSlots') {
       if (!save.research.active && researchNext(save)) {
         const rid = pickSlotResearcher(save);
         if (rid && startResearch(save, rid, now)) info.researcher = rid;
       }
     } else if (id === 'forge') {
-      if (!gearAll(save).length) {
-        const F = cfg().forge;
-        const tid = forgeGuideTarget(save);
-        info.item = forgeAndEquip(save, tid, F.guideSlot, F.guideTier);
-        info.charId = tid;
+      if (!gearAll(save).length && !save.crafting) {
+        const slot = cfg().forge.guideSlot;
+        const r = doCraftPlan(save, slot, opts.plan || craftOptions(save, slot)[0], now);
+        if (!r) return { ok: false, error: 'nochar' };
+        Object.assign(info, r, { slot });
       }
+    } else if (id === 'equipFirst') {
+      const pl = firstEquipPlan(save);
+      if (pl && equip(save, pl.charId, pl.gearId)) info.equipped = Object.assign({ item: findGear(save, pl.gearId).item }, pl);
     }
     save.guide.queue = save.guide.queue.filter((x) => x !== id);
     if (id.startsWith('gearUp:')) {
@@ -1229,6 +1390,9 @@
     autoDecide, confirmBoss,
     cancelResearch,
     isGathering, gatherFactor, gatherRate, totalGatherRate, tickGather, resumeGather, gatherBlock, startGather, stopGather, gatherPlan, gatherOptions, doGatherPlan,
-    recipe, forgeCost, mainStat, gearStats, gearBonus, gearName, forgeBlock, forge, findGear, equip, unequip, forgeAndEquip, nextUpgrade, doUpgrade, planUpgrades, doAllUpgrades, forgeHint, gearAll, pickSlotResearcher,
+    lines, gearSlots, lineOfSlot, slotName, qualities, qualityIndex, qualityOf, workshopLevel, qualityTable, rollQuality,
+    recipe, craftCost, mainStat, gearUsable, gearStats, gearBonus, gearName, gearRank, findGear, equip, unequip, bestWearer, firstEquipPlan,
+    isCrafting, craftDurationMs, craftBlock, startCraft, tickCraft, resumeCraft, craftRemainingMs, cancelCraft, pickCrafter, craftOptions, doCraftPlan,
+    nextUpgrade, doUpgrade, planUpgrades, doAllUpgrades, forgeHint, gearAll, pickSlotResearcher,
   };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

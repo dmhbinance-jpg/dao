@@ -14,6 +14,7 @@
  *  F. 时间：游戏时钟累加「真实流逝 × 倍率」不跳变；倍率 10 时研究 / 采集 / 挂机都按 10 倍推进；倍率不改战斗结果
  *  G. 招募：3 名候选同种子一致；首抽互补、排除流影；价格固定；名额满不能招；候选存档、不能放弃重抽；为采集招募默认选力资质最高
  *  H. 调参：tuning 按路径合并、错误项不生效
+ *  I. 打造：品质同种子一致、按概率表；占用角色、状态优先级；按时长完成进背包；取消退还；离线不计；走游戏时钟；v5 存档迁移
  */
 'use strict';
 const DAO = require('../src/node.js');
@@ -56,7 +57,7 @@ function gameSave(role, lv, gearTier) {
     G.addToLineup(s, c.id);
   }
   G.applyDefaultRows(s);
-  if (gearTier != null) for (const c of s.roster) for (const slot of C.game.forge.slots) c.equip[slot] = { id: 'x' + c.id + slot, slot, tier: gearTier, stat: slot === 'ring' ? G.mainStat(c) : undefined };
+  if (gearTier != null) for (const c of s.roster) for (const slot of G.gearSlots()) c.equip[slot] = { id: 'x' + c.id + slot, slot, quality: G.qualities()[gearTier].id };
   return s;
 }
 function gameBattles() {
@@ -373,6 +374,54 @@ check('D3 破甲不让防御低于 0', DAO.Damage.defenseMul(-500) === DAO.Damag
   check('H1 tuning 合并：已有的叶子按路径改；不存在 / 类型不对的不改并报出来', cfg.game.research.slots.levels[2].sec === 3 && cfg.assets.images['unit.sword'] === 'units/sword.png' &&
     res.applied.length === 2 && res.errors.length === 2 && cfg.game.recruit.unlockStage === C.game.recruit.unlockStage);
   check('H2 本次加载的 tuning.js 没有报错项', !DAO.Tuning.status.errors.length, JSON.stringify(DAO.Tuning.status.errors));
+}
+
+// ---------------- I. 打造（阶段 3.6） ----------------
+{
+  const seq = (seed) => { const s = G.newSave('sword', 't', T0); s.craftSeed = seed; return Array.from({ length: 50 }, () => G.rollQuality(s, 'forge')).join(','); };
+  check('I1 掷品质：同种子结果一致', seq(17) === seq(17) && seq(17) !== seq(18));
+  const cnt = {}; const s0 = G.newSave('mage', 't', T0); s0.craftSeed = 3;
+  for (let i = 0; i < 20000; i++) { const qq = G.rollQuality(s0, 'forge'); cnt[qq] = (cnt[qq] || 0) + 1; }
+  const tbl = C.game.production.qualityTables[1];
+  check('I2 掷品质按工坊等级的概率表（1 级：白 90%、绿 10%，其余 0）', G.qualities().every((qq, i) => Math.abs((cnt[qq.id] || 0) / 20000 - tbl[i] / 100) < 0.01), JSON.stringify(cnt));
+  // 流程：派人 → 计时 → 进背包 → 穿上；状态优先级；取消退还；离线不计；倍率
+  const mk = () => {
+    const s = G.newSave('sword', 't', T0); s.unlocks.cave = true; s.unlocks.forge = true; s.ore = 1000; s.gold = 5000; s.recruit.freeUsed = true;
+    for (const r of ['mage', 'sword']) { const c = G.rollRecruit(s, { role: r }); s.nextId++; s.roster.push(c); }
+    G.addToLineup(s, 'c2'); s.research.slots = 2;
+    G.startGather(s, 'c3', T0);
+    return s;
+  };
+  const s = mk();
+  const cost = G.craftCost('weapon'), ore0 = s.ore, gold0 = s.gold;
+  const okStart = G.startCraft(s, 'weapon', 'c3', T0);
+  const dur = s.crafting.durMs;
+  const okState = okStart && G.status(s, 'c3') === 'craft' && !G.isGathering(s, 'c3') && G.researchBlock(s, 'c3') === 'crafting' && G.gatherBlock(s, 'c3') === 'crafting' &&
+    !G.canAddToLineup(s, 'c3') && G.craftBlock(s, 'chest', 'c1') === 'busy' && s.ore === ore0 - cost.ore && s.gold === gold0 - cost.gold;
+  check('I3 打造占用角色：状态「打造」（研究 > 打造 > 采集 > 上阵 > 闲置），不能上阵 / 研究 / 采集，一次只打一件，扣材料', okState);
+  const early = G.tickCraft(s, T0 + dur - 1);
+  const done = G.tickCraft(s, T0 + dur);
+  const okDone = !early && done && s.gearBag.length === 1 && s.gearBag[0].slot === 'weapon' && G.status(s, 'c3') === 'idle' && !s.crafting && s.guide.queue.includes('equipFirst');
+  const okWear = G.equip(s, 'c1', s.gearBag[0].id) && s.roster[0].equip.weapon && G.charDef(s.roster[0]).gear.atk > 0;
+  check('I4 打造按时长完成：到点前不出、到点进装备背包，打造者回到闲置；能穿上', okDone && okWear);
+  const t = mk(); G.startCraft(t, 'chest', 'c3', T0); G.tickCraft(t, T0 + 1000);
+  const back = G.cancelCraft(t);
+  check('I5 中途取消：退还全部材料，角色回到闲置', back === 'c3' && t.ore === 1000 && t.gold === 5000 && !t.crafting && G.status(t, 'c3') === 'idle');
+  const u = mk(); G.startCraft(u, 'weapon', 'c3', T0); G.tickCraft(u, T0 + 2000);
+  G.resumeCraft(u, T0 + 3600000);           // 关了一小时再打开
+  G.tickCraft(u, T0 + 3600000 + 1000);
+  check('I6 离线不计算：重新打开页面后从当时接着算', Math.abs(u.crafting.progressMs - 3000) < 1e-6);
+  const prog = (scale) => { let rl = 1000; const ck = DAO.GameClock.create({ scale, realNow: () => rl }); const w = mk(); G.startCraft(w, 'weapon', 'c3', ck.now()); rl += 2000; G.tickCraft(w, ck.now()); return w.crafting ? w.crafting.progressMs : Infinity; };
+  check('I7 打造走游戏时钟：倍率 10 时进度是倍率 1 的 10 倍', prog(10) === prog(1) * 10 || (prog(1) === 2000 && prog(10) === Infinity));
+  // v5 存档迁移
+  const v5 = G.newSave('sword', 'old', T0); v5.v = 5; delete v5.crafting; delete v5.craftSeed; delete v5.workshops;
+  v5.roster[0].equip = { weapon: { id: 'g1', slot: 'weapon', tier: 1 }, chest: { id: 'g2', slot: 'chest', tier: 0 }, ring: { id: 'g3', slot: 'ring', tier: 2, stat: 'str' } };
+  v5.gearBag = [{ id: 'g4', slot: 'weapon', tier: 2 }, { id: 'g5', slot: 'ring', tier: 0, stat: 'int' }];
+  const m = G.migrate(clone(v5), T0);
+  const ring = m && m.gearBag.find((g) => g.id === 'g3');
+  check('I8 上一版（v5）存档迁移：下品 / 中品 / 上品 → 白 / 绿 / 蓝；穿着的戒指卸下进背包、标暂不可用', !!m && m.v === C.game.saveVersion && m.roster[0].equip.weapon.quality === 'green' && m.roster[0].equip.chest.quality === 'white' &&
+    !('ring' in m.roster[0].equip) && ring && ring.disabled && ring.quality === 'blue' && !G.gearUsable(ring) && !G.equip(m, 'c1', 'g3') &&
+    m.gearBag.find((g) => g.id === 'g4').quality === 'blue' && m.gearBag.find((g) => g.id === 'g5').disabled && m.craftSeed === 1 && m.workshops.forge.level === 1 && m.crafting === null);
 }
 
 // ---------------- 输出 ----------------

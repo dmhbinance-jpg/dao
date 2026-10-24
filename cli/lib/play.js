@@ -8,7 +8,7 @@
  *  - kind 'std'（标准玩家）：推关战斗按 2× 观看 + 每场阅读点击；引导 / 首领 / 卡牌提示 / 3 选 1 等 guideMs 后确认（3 选 1 选默认）；
  *      研究上阵位：金币够就派闲人（没有闲人就调一个采集的人）去研究；第二段起还能研究时，打造装备会先给研究留出金币；
  *      采集开放后闲人都去采集，采集的人少于 stdGatherers（2）时花钱招人去采集（留 200 金余量）；
- *      灵矿和金币够了就按 Game.nextUpgrade 打造并穿上（每件 forgeMs）。
+ *      背包里有更好的装备就穿上；灵矿和金币够、没在打造时，按 Game.nextUpgrade 派人去打造（每次操作 forgeMs）。
  *  - kind 'auto'（全自动玩家）：只在引导 / 提示 / 3 选 1 处点确认（都用默认），不做可选研究、不主动招募和锻造。
  *  - solo：从不招募（单人对照）。
  * 时间按「当前在打的章节」分段统计：用时、推关 / 挂机 / 等待 / 锻造时间、角色·分钟（上阵 / 研究 / 采集 / 闲置）、
@@ -29,7 +29,7 @@ const SEEDS = {
 const STD_GATHERERS = 2;
 
 function emptySeg(now, save) {
-  return { start: now, end: null, push: 0, idle: 0, wait: 0, forge: 0, cm: { lineup: 0, research: 0, gather: 0, idle: 0 },
+  return { start: now, end: null, push: 0, idle: 0, wait: 0, forge: 0, cm: { lineup: 0, research: 0, gather: 0, craft: 0, idle: 0 },
     gold0: save.gold, goldInc0: save.stats.goldTotal, ore0: save.stats.oreTotal || 0, forgeGold0: save.stats.forgeGold || 0, forgeOre0: save.stats.forgeOre || 0,
     ci0: clone(save.cardsInfo), recruits: 0, recruitGold: 0 };
 }
@@ -50,8 +50,9 @@ function closeSeg(seg, now, save) {
   seg.slots = save.research.slots;
   seg.roster = save.roster.length;
   seg.gatherers = save.gather.ids.length;
-  seg.pieces = L.reduce((a, c) => a + C.forge.slots.filter((s) => c.equip[s]).length, 0);
-  seg.tiers = [0, 1, 2].map((t) => L.reduce((a, c) => a + C.forge.slots.filter((s) => c.equip[s] && c.equip[s].tier === t).length, 0));
+  seg.pieces = L.reduce((a, c) => a + G.gearSlots().filter((s) => c.equip[s]).length, 0);
+  // 上阵角色身上各品质的件数（白 / 绿 / 蓝 / 紫 / 橙 / 红）
+  seg.tiers = G.qualities().map((qq) => L.reduce((a, c) => a + G.gearSlots().filter((s) => c.equip[s] && c.equip[s].quality === qq.id).length, 0));
   seg.carded = L.filter((c) => c.card).length;
   delete seg.ci0;
 }
@@ -82,12 +83,13 @@ function simulate(role, idx, opts) {
   const advance = (ms, bucket) => {
     if (seg) {
       seg[bucket] += ms;
-      const nL = save.lineup.length, nR = save.research.active ? 1 : 0, nG = save.gather.ids.length;
-      seg.cm.lineup += ms * nL; seg.cm.research += ms * nR; seg.cm.gather += ms * nG;
-      seg.cm.idle += ms * Math.max(0, save.roster.length - nL - nR - nG);
+      const nL = save.lineup.length, nR = save.research.active ? 1 : 0, nG = save.gather.ids.length, nC = save.crafting ? 1 : 0;
+      seg.cm.lineup += ms * nL; seg.cm.research += ms * nR; seg.cm.gather += ms * nG; seg.cm.craft += ms * nC;
+      seg.cm.idle += ms * Math.max(0, save.roster.length - nL - nR - nG - nC);
     }
     now += ms;
     G.tickGather(save, now);
+    G.tickCraft(save, now);
   };
   const choose = () => {
     const res = G.chooseRecruit(save, G.defaultChoice(save), now);
@@ -104,6 +106,7 @@ function simulate(role, idx, opts) {
   while (guard++ < 20000) {
     G.tickResearch(save, now);
     G.tickGather(save, now);
+    G.tickCraft(save, now);
     if (opts.solo && save.guide.queue.length) save.guide.queue = [];
     if (kind === 'std' && !opts.solo) {
       // 研究上阵位：金币够就派闲人去；没有闲人调一个采集的人（智力最高的）
@@ -123,7 +126,7 @@ function simulate(role, idx, opts) {
         }
         // 打造：按推荐顺序，够了就打
         for (let u = G.nextUpgrade(save), k = 0; u && u.affordable && (u.kind === 'equip' || save.gold - u.cost.gold >= reserve) && k < 30; u = G.nextUpgrade(save), k++) {
-          G.doUpgrade(save, u);
+          G.doUpgrade(save, u, now);
           if (r.firstGearAt == null) r.firstGearAt = now - T0;
           advance(E.forgeMs, 'forge');
         }
@@ -198,11 +201,11 @@ function ladder(snaps, stageId, levels, mutate, seedsPer) {
   const i = rates.findIndex((x) => x >= 0.5);
   return { rates, first: i < 0 ? null : levels[i] };
 }
-/** 快照改造：卸下全部装备 / 拔掉全部技能卡 / 每个上阵角色穿一整套某档白装 */
-const stripGear = (s) => { for (const c of s.roster) for (const slot of C.forge.slots) c.equip[slot] = null; };
+/** 快照改造：卸下全部装备 / 拔掉全部技能卡 / 每个上阵角色穿一整套某品质（white / green / …）的装备 */
+const stripGear = (s) => { for (const c of s.roster) for (const slot of G.gearSlots()) c.equip[slot] = null; };
 const stripCards = (s) => { for (const c of s.roster) c.card = null; };
-const fullSet = (tier) => (s) => {
-  for (const { char } of G.lineupChars(s)) for (const slot of C.forge.slots) char.equip[slot] = { id: 'x' + char.id + slot, slot, tier, stat: slot === 'ring' ? G.mainStat(char) : undefined };
+const fullSet = (quality) => (s) => {
+  for (const { char } of G.lineupChars(s)) for (const slot of G.gearSlots()) char.equip[slot] = { id: 'x' + char.id + slot, slot, quality };
 };
 
 /** 报告头：用的是哪套数值 */

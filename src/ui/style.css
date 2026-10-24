@@ -480,9 +480,6 @@ button.ghost { background: transparent; }
 .forge-preview > button { justify-self: start; }
 .gear-bag-row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 8px; align-items: center; padding: 3px 0; border-bottom: 1px dashed var(--line); font-size: 13px; }
 .gear-name { font-weight: 600; }
-.gear-name.t0 { color: var(--ink-2); }
-.gear-name.t1 { color: var(--a); }
-.gear-name.t2 { color: var(--gold); }
 .gear-slots { display: grid; gap: 4px; }
 .gear-slot { display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; gap: 6px; align-items: center; border: 1px solid var(--line); border-radius: 4px; padding: 4px 6px; font-size: 13px; }
 .gear-slot.empty { border-style: dashed; }
@@ -516,3 +513,17 @@ img.gear-icon, img.card-icon { width: 28px; height: 28px; border-radius: 3px; }
 .choice-meta { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 12px; color: var(--ink-2); }
 .choice > button { justify-self: stretch; }
 .warn-text { color: var(--b); font-size: 13px; margin: 6px 0 0; }
+
+/* ===== 阶段 3.6：装备品质（白 / 绿 / 蓝 / 紫 / 橙 / 红）、打造 ===== */
+:root { --gq-white: #8f877a; --gq-green: #3f8a3a; --gq-blue: #2f6db5; --gq-purple: #8a4bb8; --gq-orange: #c2660c; --gq-red: #b8322a; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --gq-white: #c9c1b2; --gq-green: #7cc477; --gq-blue: #79a8e8; --gq-purple: #c08ae6; --gq-orange: #f0a04b; --gq-red: #f07a6e; } }
+:root[data-theme="dark"] { --gq-white: #c9c1b2; --gq-green: #7cc477; --gq-blue: #79a8e8; --gq-purple: #c08ae6; --gq-orange: #f0a04b; --gq-red: #f07a6e; }
+.gear-name.gq-white { color: var(--gq-white); } .gear-name.gq-green { color: var(--gq-green); } .gear-name.gq-blue { color: var(--gq-blue); }
+.gear-name.gq-purple { color: var(--gq-purple); } .gear-name.gq-orange { color: var(--gq-orange); } .gear-name.gq-red { color: var(--gq-red); }
+.gear-name.off { text-decoration: line-through; opacity: .7; }
+.q-odds { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 4px 0 8px; font-size: 13px; }
+.gq-chip { border: 1px solid currentColor; border-radius: 10px; padding: 0 8px; font-weight: 600; }
+.gq-chip.gq-white { color: var(--gq-white); } .gq-chip.gq-green { color: var(--gq-green); } .gq-chip.gq-blue { color: var(--gq-blue); }
+.gq-chip.gq-purple { color: var(--gq-purple); } .gq-chip.gq-orange { color: var(--gq-orange); } .gq-chip.gq-red { color: var(--gq-red); }
+.act-fill.craft { background: var(--gold); }
+.char-card.st-craft { border-left: 3px solid var(--gold); }

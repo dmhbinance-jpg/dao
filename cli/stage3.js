@@ -6,7 +6,7 @@
  *
  *  0. 同种子一致；上一版（v4）和更早的存档迁移
  *  1. 模拟玩家：第三段用时、挂机占比、通关等级、上阵人数和装备；全自动玩家能否打完前三段
- *  2. 各关通关等级（3 人不穿 / 3 人中品 / 3 人上品 / 4 人中品）、角色·分钟、金币和灵矿结余
+ *  2. 各关通关等级（3 人不穿 / 3 人全绿 / 3 人全蓝 / 4 人全绿）、角色·分钟、金币和灵矿结余
  */
 'use strict';
 const fs = require('fs');
@@ -83,9 +83,9 @@ const four = (s) => {
 };
 const LADDERS = {
   none3: { name: '3 人不穿装备', fn: P.stripGear },
-  mid3: { name: '3 人一套中品', fn: P.fullSet(1) },
-  top3: { name: '3 人一套上品', fn: P.fullSet(2) },
-  mid4: { name: '4 人一套中品', fn: (s) => { four(s); P.fullSet(1)(s); } },
+  mid3: { name: '3 人全绿', fn: P.fullSet('green') },
+  top3: { name: '3 人全蓝', fn: P.fullSet('blue') },
+  mid4: { name: '4 人全绿', fn: (s) => { four(s); P.fullSet('green')(s); } },
 };
 const R = {};
 {
@@ -118,14 +118,14 @@ function stat(vid, kind, role) {
   return { n: rs.length, done: done.length / rs.length, time: q(ds.map((x) => x.dur), 0.5), t10: q(ds.map((x) => x.dur), 0.1), t90: q(ds.map((x) => x.dur), 0.9),
     share: q(s.map((x) => x.idle / Math.max(1, x.dur)), 0.5), share90: q(s.map((x) => x.idle / Math.max(1, x.dur)), 0.9), lv: q(ds.map((x) => x.lv1), 0.5),
     lv10: q(ds.map((x) => x.lv1), 0.1), lv90: q(ds.map((x) => x.lv1), 0.9), slots: q(ds.map((x) => x.slots), 0.5), lineup: q(ds.map((x) => x.lineup), 0.5),
-    tiers: [0, 1, 2].map((t) => q(ds.map((x) => x.tiers[t]), 0.5)), all3: rs.filter((r) => r.done).length / rs.length };
+    tiers: G.qualities().slice(0, 3).map((qq, t) => q(ds.map((x) => x.tiers[t]), 0.5)), all3: rs.filter((r) => r.done).length / rs.length };
 }
 
 log('## 1. 模拟玩家：第三段（第二段首领通关 → 第三段首领通关）');
 log();
 log('第三段的卡点是第 4 个上阵位：打完第二段后上阵位可以研究到第 4 级（6,000 金），铁岩谷按 4 人上阵设计；卡关时先引导研究上阵位，研究不了再引导补装备。标准玩家 / 全自动玩家的策略见 cli/lib/play.js。');
 log();
-log('| 玩家 | 开局 | 打完第三段 | 第三段用时 分钟 中位（P10–P90） | 挂机占比 中位 | 通关时开局角色等级 中位（P10–P90） | 上阵人数 | 上阵装备 下 / 中 / 上 品件数 中位 |');
+log('| 玩家 | 开局 | 打完第三段 | 第三段用时 分钟 中位（P10–P90） | 挂机占比 中位 | 通关时开局角色等级 中位（P10–P90） | 上阵人数 | 上阵装备 白 / 绿 / 蓝 件数 中位 |');
 log('|---|---|---|---|---|---|---|---|');
 const ST = { slots: {} };
 for (const kind of ['std', 'auto']) {
@@ -184,7 +184,7 @@ log('## 3. 验收');
 log();
 for (const role of ROLES) {
   const p = R.slots.lad[role].per[BOSS3];
-  checks.push([`第三段卡点：4 人一套中品比 3 人一套中品的首领通关等级低 ≥ 3 级（${RN[role]}开局：4 人 ${fmtLv(p.mid4)}，3 人 ${fmtLv(p.mid3)}）`, p.mid4 != null && (p.mid3 == null || p.mid3 - p.mid4 >= 3)]);
+  checks.push([`第三段卡点：4 人全绿比 3 人全绿的首领通关等级低 ≥ 3 级（${RN[role]}开局：4 人 ${fmtLv(p.mid4)}，3 人 ${fmtLv(p.mid3)}）`, p.mid4 != null && (p.mid3 == null || p.mid3 - p.mid4 >= 3)]);
 }
 const S3 = ST.slots;
 for (const role of ROLES) {

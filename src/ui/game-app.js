@@ -23,7 +23,8 @@
   let modalClosedFor = null;       // 玩家点了「稍后」的引导 id
   let lastRecruit = null;          // 洞府页展示最近一次招募结果
   let adhoc = null;                // 临时弹窗（换卡确认、插卡结果）{ title, body, extra, buttons: [{label, primary, onClick}] }
-  const forgeSel = { slot: 'weapon', tier: 1, stat: null, target: null };  // 锻造房当前选择（target = 打造后给谁穿，'' = 放进背包）
+  const forgeSel = { slot: 'weapon', crafter: null };  // 锻造房当前选择：部位、派谁去打造（null = 默认）
+  let caveSig = '';                                    // 洞府页的状态签名：变了就重画（灵矿、金币涨了按钮能不能点等）
   let hintSig = '';
   let lastPersist = 0;
   // 游戏时钟：所有按时间走的规则（研究、采集、挂机、战斗播放）都从这里取 now；倍率 = CONFIG.debug.timeScale
@@ -45,7 +46,8 @@
     // 游戏时间从存档里记的接着走（老存档没有就从现在起步）
     clock = DAO.GameClock.create({ scale: DAO.CONFIG.debug.timeScale, saved: save && save.clock });
     // 采集不补离线：重新打开页面时从现在开始算
-    if (save) { G.resumeGather(save, gnow()); persist(); }
+    // 采集、打造都不补离线：重新打开页面时从现在开始算
+    if (save) { G.resumeGather(save, gnow()); G.resumeCraft(save, gnow()); persist(); }
   }
   function persist() { if (save) { save.clock = clock.save(); store.set('save', save); } }
 
@@ -54,7 +56,7 @@
   const charArt = (c) => c.art || (DAO.CONFIG.game.starters[c.role] || {}).art;
   const charGlyph = (c) => UI.artBox(charArt(c), { use: 'portrait', text: c.role === 'sword' ? '剑' : '法', cls: 'role-glyph role-' + c.role, title: c.name });
   const STAT_NAME = { str: '力', agi: '敏', int: '智' };
-  const STATUS_NAME = { lineup: '上阵', idle: '闲置', research: '研究中', gather: '采集中', new: '新人' };
+  const STATUS_NAME = { lineup: '上阵', idle: '闲置', research: '研究中', craft: '打造中', gather: '采集中', new: '新人' };
   const fmtTime = (ms) => { const s = Math.max(0, Math.ceil(ms / 1000)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
 
   function skillDesc(s) {
@@ -124,13 +126,15 @@
   }
   function cardRoles(id) { const d = DAO.CONFIG.cards[id]; return (d.roles || []).map((r) => DAO.ROLE_NAMES[r]).join('、'); }
   // ---- 装备 ----
-  const SLOT_NAME = () => DAO.CONFIG.game.forge.slotNames;
+  const SLOT_NAME = () => DAO.CONFIG.game.production.slotNames;
   const oreText = (x) => UI.num(Math.floor(x));
   function gearStatText(stats) {
     const names = { atk: '攻击', armor: '护甲', resist: '法抗', hp: '气血', str: '力', agi: '敏', int: '智' };
     return Object.entries(stats).map(([k, v]) => `${names[k] || k} +${v}`).join(' · ');
   }
-  function gearLine(item) { return h('span', { class: 'gear-name t' + item.tier }, G.gearName(item)); }
+  function gearLine(item) { return h('span', { class: 'gear-name gq-' + item.quality + (G.gearUsable(item) ? '' : ' off') }, G.gearName(item)); }
+  /** 一段游戏时长换成真实剩余时间显示（时间倍率下倒计时按真实时间走） */
+  const fmtGame = (gameMs) => fmtTime(clock.realMs(gameMs));
   function costText(c) { return `${c.ore} 灵矿 · ${UI.num(c.gold)} 金`; }
 
   function dropToast(drops) {
@@ -258,30 +262,42 @@
       const total = ra.endsAt - ra.startedAt;
       const left2 = ra.endsAt - gnow();
       right.prepend(h('div', { class: 'act-research', title: '研究进度' },
-        h('small', null, `研究 上阵位→${ra.level} · ${c ? c.name : ''} · 剩 `, (els.researchLeft = h('span', null, fmtTime(left2)))),
+        h('small', null, `研究 上阵位→${ra.level} · ${c ? c.name : ''} · 剩 `, (els.researchLeft = h('span', null, fmtGame(left2)))),
         h('div', { class: 'act-bar small' }, (els.researchFill = h('div', { class: 'act-fill research', style: { width: Math.min(100, 100 * (1 - left2 / total)) + '%' } })))));
     }
     // 采集 / 锻造提示（不打断推关）
     if (save.unlocks.forge && save.gather.ids.length) {
       right.prepend(h('div', { class: 'act-gather', title: '采集中' },
-        h('small', null, `采集 ${save.gather.ids.length} 人 · ${G.totalGatherRate(save).toFixed(2)}/秒 · 灵矿 `, (els.actOre = h('b', null, oreText(save.ore))))));
+        h('small', null, `采集 ${save.gather.ids.length} 人 · ${G.totalGatherRate(save).toFixed(2)}/秒 · 灵矿 `, h('b', { 'data-live': 'ore' }, oreText(save.ore)))));
     }
-    if (save.guide.queue.includes('forge') && G.guideBlock(save, 'forge')) {
-      const c = G.forgeCost(DAO.CONFIG.game.forge.guideTier);
-      right.prepend(h('div', { class: 'act-gather' }, h('small', null, `第一件装备：灵矿 `, (els.actOre2 = h('b', null, oreText(save.ore))), ` / ${c.ore}`)));
+    // 打造进度
+    const job = save.crafting;
+    if (job) {
+      const cc = G.getChar(save, job.charId);
+      right.prepend(h('div', { class: 'act-research', title: '打造进度' },
+        h('small', null, `打造 ${SLOT_NAME()[job.slot]} · ${cc ? cc.name : ''} · 剩 `, h('span', { 'data-live': 'craftLeft' }, fmtGame(G.craftRemainingMs(save)))),
+        h('div', { class: 'act-bar small' }, h('div', { class: 'act-fill craft', 'data-live': 'craftFill', style: { width: Math.min(100, 100 * job.progressMs / job.durMs) + '%' } }))));
+    }
+    if (save.guide.queue.includes('forge') && G.guideBlock(save, 'forge') === 'ore') {
+      const c = G.craftCost(DAO.CONFIG.game.forge.guideSlot);
+      right.prepend(h('div', { class: 'act-gather' }, h('small', null, `第一件装备：灵矿 `, h('b', { 'data-live': 'ore' }, oreText(save.ore)), ` / ${c.ore}`)));
     }
     const hint = G.forgeHint(save);
     if (hint) {
-      const c = G.getChar(save, hint.charId);
+      const who = G.getChar(save, hint.charId);
+      const text = hint.kind === 'equip'
+        ? `新装备：${G.gearName(G.findGear(save, hint.gearId).item)} 可以穿给 ${who.name}`
+        : `可以打造${SLOT_NAME()[hint.slot]}（给 ${who.name}，${costText(hint.cost)}）`;
       right.prepend(h('div', { class: 'act-hint' },
-        h('small', null, `灵矿够了：${c.name} 的${DAO.CONFIG.game.forge.tierNames[hint.tier]}${SLOT_NAME()[hint.slot]}（${costText(hint.cost)}）`),
-        h('button', { class: 'mini primary', onclick: () => doUpgradeHint() }, '打造并穿上'),
+        h('small', null, text),
+        h('button', { class: 'mini primary', onclick: () => doUpgradeHint() }, hint.kind === 'equip' ? '穿上' : `派 ${G.getChar(save, hint.crafter).name} 去打造`),
         h('button', { class: 'mini ghost', title: '关掉锻造提示（锻造房里可以再打开）', onclick: () => { save.settings.forgeHints = false; persist(); renderActivity(); } }, '×')));
     }
-    hintSig = hint ? hint.charId + hint.slot + hint.tier : '';
+    hintSig = hintKey(hint);
     box.appendChild(left);
     box.appendChild(right);
   }
+  function hintKey(u) { return u ? [u.kind, u.charId, u.slot, u.gearId, u.crafter].join(':') : ''; }
   function waitText(a) {
     if (a.reason === 'boss') { const st = G.stageById(a.stageId); return `首领关 ${st.id} ${st.name}：等你确认后挑战`; }
     if (a.reason === 'guide') return a.guide && a.guide.startsWith('gearUp:') ? '卡关了：灵矿够补装备，等你确认' : '有新内容开放，等你确认';
@@ -380,6 +396,7 @@
 
   // ================= 洞府页 =================
   function cavePage() {
+    caveSig = caveSignature();
     const wrap = h('div', { class: 'cave-grid' });
     const now = gnow();
     // ---- 招募 ----
@@ -419,7 +436,7 @@
     if (ra) {
       const c = G.getChar(save, ra.charId);
       rs.appendChild(h('div', { class: 'research-active' },
-        h('span', null, `${c.name} 正在研究第 ${ra.level} 个上阵位，`, h('b', null, `剩 ${fmtTime(ra.endsAt - now)}`))));
+        h('span', null, `${c.name} 正在研究第 ${ra.level} 个上阵位，剩 `, h('b', { 'data-live': 'researchLeft' }, fmtGame(ra.endsAt - now)))));
     } else if (!nx) {
       rs.appendChild(h('p', null, G.slots(save) >= S.max ? '上阵位已经研究到最高。' : `现在上阵位最多研究到 ${G.researchCap(save)} 个，后面的等以后开放。`));
     } else {
@@ -427,7 +444,7 @@
       const list = h('div', { class: 'researcher-list' });
       for (const c of save.roster) {
         const blk = G.researchBlock(save, c.id);
-        const why = { gold: '金币不够', lastFighter: '唯一上阵的角色', busy: '研究中' }[blk];
+        const why = { gold: '金币不够', lastFighter: '唯一上阵的角色', busy: '研究中', crafting: '打造中' }[blk];
         list.appendChild(h('div', { class: 'researcher' },
           charGlyph(c),
           h('span', { class: 'r-name' }, c.name, h('small', null, ` Lv${c.level} · ${STATUS_NAME[G.status(save, c.id)]}`)),
@@ -447,9 +464,9 @@
     const box = h('div', { class: 'card cave-card' },
       h('h2', null, '采集 · 灵矿'),
       h('p', { class: 'muted' }, `闲置的角色可以派去采灵矿，随时派出、随时召回。每人每秒 ${Gc.perSec} × 资质系数（力成长 ÷ ${Gc.refStrGrowth}，最低 ${Gc.minFactor}）。采集中的角色不能上阵、不能研究、不拿经验。关掉页面期间不产出。`),
-      h('div', { class: 'gather-total' }, h('span', null, '总产量 ', h('b', null, `${G.totalGatherRate(save).toFixed(2)}/秒`)), h('span', null, '现有灵矿 ', (els.caveOre = h('b', null, oreText(save.ore))))));
+      h('div', { class: 'gather-total' }, h('span', null, '总产量 ', h('b', null, `${G.totalGatherRate(save).toFixed(2)}/秒`)), h('span', null, '现有灵矿 ', h('b', { 'data-live': 'ore' }, oreText(save.ore)))));
     const list = h('div', { class: 'researcher-list' });
-    const order = { gather: 0, idle: 1, lineup: 2, research: 3 };
+    const order = { gather: 0, idle: 1, lineup: 2, craft: 3, research: 4 };
     const chars = save.roster.slice().sort((a, b) => order[G.status(save, a.id)] - order[G.status(save, b.id)] || G.gatherRate(b) - G.gatherRate(a));
     for (const c of chars) {
       const stt = G.status(save, c.id);
@@ -457,7 +474,7 @@
       if (stt === 'gather') btn = h('button', { class: 'mini', onclick: () => { G.stopGather(save, c.id, gnow()); toast(`${c.name} 召回${G.inLineup(save, c.id) ? '，已上阵' : ''}`); changed(); step(); } }, '召回');
       else {
         const blk = G.gatherBlock(save, c.id);
-        const why = { research: '研究中', lastFighter: '唯一上阵的角色' }[blk];
+        const why = { research: '研究中', crafting: '打造中', lastFighter: '唯一上阵的角色' }[blk];
         btn = h('button', { class: 'mini' + (blk ? '' : stt === 'idle' ? ' primary' : ''), disabled: !!blk, title: why || (stt === 'lineup' ? '会从上阵里撤下来' : ''), onclick: () => doGather(c.id) }, why || (stt === 'lineup' ? '下阵去采集' : '派去采集'));
       }
       list.appendChild(h('div', { class: 'researcher' + (stt === 'gather' ? ' on' : '') },
@@ -472,47 +489,52 @@
 
   // ---- 锻造房 ----
   function forgeCard() {
-    const F = DAO.CONFIG.game.forge;
+    const PR = DAO.CONFIG.game.production;
+    const lvl = G.workshopLevel(save, 'forge');
+    const table = G.qualityTable(save, 'forge');
     const box = h('div', { class: 'card cave-card forge-card' },
-      h('h2', null, '锻造房'),
-      h('p', { class: 'muted' }, '灵矿 + 金币即时打造白装，不占角色。词条固定，档位越高数值越高、花费越多。打好的装备放进装备背包，可以穿上、卸下、在角色间换。'));
-    const seg = (items, cur, onPick) => h('div', { class: 'seg' }, items.map(([v, label]) => h('button', { class: cur === v ? 'on' : '', onclick: () => { onPick(v); renderMain(); } }, label)));
-    box.appendChild(h('div', { class: 'forge-row' }, h('span', { class: 'fr-label' }, '部位'), seg(F.slots.map((sl) => [sl, F.slotNames[sl]]), forgeSel.slot, (v) => { forgeSel.slot = v; forgeSel.target = null; })));
-    box.appendChild(h('div', { class: 'forge-row' }, h('span', { class: 'fr-label' }, '档位'), seg(F.tierNames.map((n, i) => [i, n]), forgeSel.tier, (v) => { forgeSel.tier = v; })));
-    const rec = G.recipe(forgeSel.slot);
-    // 打造后给谁穿：默认第一个这个部位比所选档位差的上阵角色
-    const lineupCs = G.lineupChars(save).map((x) => x.char);
-    if (forgeSel.target == null || (forgeSel.target && !G.getChar(save, forgeSel.target))) {
-      const t = lineupCs.find((c) => !c.equip[forgeSel.slot] || c.equip[forgeSel.slot].tier < forgeSel.tier);
-      forgeSel.target = t ? t.id : '';
+      h('h2', null, `锻造房 · ${lvl} 级`),
+      h('p', { class: 'muted' }, '派一个角色用灵矿 + 金币打造武器或胸甲：打造要时间，期间他不能上阵、研究、采集，不拿经验；力越高打得越快。品质打出来才知道，打好直接进装备背包，去角色页穿上。'),
+      h('div', { class: 'q-odds' }, h('span', { class: 'muted' }, '品质概率：'), PR.qualities.map((q, i) => table[i] > 0 ? h('span', { class: 'gq-chip gq-' + q.id }, `${q.name} ${table[i]}%`) : null),
+        h('small', { class: 'muted' }, '（品质越高数值越高：' + PR.qualities.map((q) => `${q.name} ×${q.mult}`).join(' · ') + '）')));
+    const job = save.crafting;
+    if (job) {
+      const cc = G.getChar(save, job.charId);
+      box.appendChild(h('div', { class: 'forge-preview' },
+        h('div', null, h('b', null, `${cc ? cc.name : ''} 正在打造${SLOT_NAME()[job.slot]}`), h('span', { class: 'muted' }, '，剩 '), h('b', { 'data-live': 'craftLeft' }, fmtGame(G.craftRemainingMs(save)))),
+        h('div', { class: 'act-bar' }, h('div', { class: 'act-fill craft', 'data-live': 'craftFill', style: { width: Math.min(100, 100 * job.progressMs / job.durMs) + '%' } })),
+        h('div', null, h('button', { onclick: doCancelCraft }, `取消打造（退还 ${costText(job.cost)}）`))));
+    } else {
+      const slots = G.gearSlots();
+      if (!slots.includes(forgeSel.slot)) forgeSel.slot = slots[0];
+      const seg = (items, cur, onPick) => h('div', { class: 'seg' }, items.map(([v, label]) => h('button', { class: cur === v ? 'on' : '', onclick: () => { onPick(v); renderMain(); } }, label)));
+      box.appendChild(h('div', { class: 'forge-row' }, h('span', { class: 'fr-label' }, '部位'), seg(slots.map((sl) => [sl, SLOT_NAME()[sl]]), forgeSel.slot, (v) => { forgeSel.slot = v; })));
+      const rec = G.recipe(forgeSel.slot);
+      const cost = rec.cost;
+      // 派谁去：闲置、采集中、上阵（不是唯一上阵的）都可以
+      const cands = save.roster.filter((c) => ['idle', 'gather', 'lineup'].includes(G.status(save, c.id)) && !G.craftBlock(Object.assign({}, save, { ore: 1e9, gold: 1e9 }), forgeSel.slot, c.id));
+      if (!forgeSel.crafter || !cands.some((c) => c.id === forgeSel.crafter)) forgeSel.crafter = G.pickCrafter(save, forgeSel.slot) || (cands[0] && cands[0].id) || null;
+      const crafter = forgeSel.crafter ? G.getChar(save, forgeSel.crafter) : null;
+      const sel = h('select', { onchange: (e) => { forgeSel.crafter = e.target.value; renderMain(); } },
+        cands.map((c) => h('option', { value: c.id, selected: forgeSel.crafter === c.id }, `${c.name}（${STATUS_NAME[G.status(save, c.id)]} · 力 ${Math.round(G.charUnit(c).base.str)} · 约 ${fmtGame(G.craftDurationMs(save, forgeSel.slot, c.id))}）`)));
+      box.appendChild(h('div', { class: 'forge-row' }, h('span', { class: 'fr-label' }, '派谁'), cands.length ? sel : h('span', { class: 'muted' }, '没有能派的人')));
+      const blk = crafter ? G.craftBlock(save, forgeSel.slot, crafter.id) : 'nochar';
+      const white = { slot: forgeSel.slot, quality: 'white' };
+      box.appendChild(h('div', { class: 'forge-preview' },
+        h('div', null, h('b', null, rec.name), h('span', null, `：${rec.desc}，白品质 ${gearStatText(G.gearStats(white))}`)),
+        crafter && G.status(save, crafter.id) !== 'idle' ? h('small', { class: 'muted' }, `${crafter.name} 现在${STATUS_NAME[G.status(save, crafter.id)]}，派去打造会离开${G.status(save, crafter.id) === 'gather' ? '采集' : '上阵'}，打完回到闲置。`) : null,
+        h('div', { class: 'forge-cost' },
+          h('span', { class: save.ore < cost.ore ? 'lack' : '' }, `灵矿 ${cost.ore}（有 `, h('span', { 'data-live': 'ore' }, oreText(save.ore)), '）'),
+          h('span', { class: save.gold < cost.gold ? 'lack' : '' }, `金币 ${UI.num(cost.gold)}（有 `, h('span', { 'data-live': 'gold' }, UI.num(save.gold)), '）')),
+        h('button', { class: 'primary', disabled: !!blk, onclick: doCraft }, { ore: '灵矿不够', gold: '金币不够', nochar: '没有能派的人', busy: '正在打造' }[blk] || `派 ${crafter.name} 去打造（约 ${fmtGame(G.craftDurationMs(save, forgeSel.slot, crafter.id))}）`)));
     }
-    const target = forgeSel.target ? G.getChar(save, forgeSel.target) : null;
-    if (forgeSel.slot === 'ring') {
-      if (!forgeSel.stat || !rec.stats.includes(forgeSel.stat)) forgeSel.stat = target ? G.mainStat(target) : 'str';
-      box.appendChild(h('div', { class: 'forge-row' }, h('span', { class: 'fr-label' }, '三维'), seg(rec.stats.map((k) => [k, STAT_NAME[k]]), forgeSel.stat, (v) => { forgeSel.stat = v; })));
-    }
-    const sel = h('select', { onchange: (e) => { forgeSel.target = e.target.value; renderMain(); } },
-      h('option', { value: '', selected: !forgeSel.target }, '放进装备背包'),
-      save.roster.map((c) => h('option', { value: c.id, selected: forgeSel.target === c.id }, `${c.name}（${STATUS_NAME[G.status(save, c.id)]}）`)));
-    box.appendChild(h('div', { class: 'forge-row' }, h('span', { class: 'fr-label' }, '打好后'), sel));
-    const item = { slot: forgeSel.slot, tier: forgeSel.tier, stat: forgeSel.slot === 'ring' ? forgeSel.stat : undefined };
-    const cost = G.forgeCost(forgeSel.tier);
-    const blk = G.forgeBlock(save, forgeSel.slot, forgeSel.tier);
-    const cur = target && target.equip[forgeSel.slot];
-    box.appendChild(h('div', { class: 'forge-preview' },
-      h('div', null, h('b', null, G.gearName(item)), h('span', null, ' ', gearStatText(G.gearStats(item)))),
-      cur ? h('small', { class: 'muted' }, `${target.name} 现在穿着 ${G.gearName(cur)}（${gearStatText(G.gearStats(cur))}），换下的回背包`) : target ? h('small', { class: 'muted' }, `${target.name} 这个部位还空着`) : null,
-      h('div', { class: 'forge-cost' },
-        h('span', { class: save.ore < cost.ore ? 'lack' : '' }, `灵矿 ${cost.ore}（有 ${oreText(save.ore)}）`),
-        h('span', { class: save.gold < cost.gold ? 'lack' : '' }, `金币 ${UI.num(cost.gold)}（有 ${UI.num(save.gold)}）`)),
-      h('button', { class: 'primary', disabled: !!blk, onclick: doForge }, blk === 'ore' ? '灵矿不够' : blk === 'gold' ? '金币不够' : target ? `打造并给 ${target.name} 穿上` : '打造')));
-    box.appendChild(h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: save.settings.forgeHints, onchange: (e) => { save.settings.forgeHints = e.target.checked; persist(); renderActivity(); } }), ' 灵矿够打下一件时在活动条提示'));
+    box.appendChild(h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: save.settings.forgeHints, onchange: (e) => { save.settings.forgeHints = e.target.checked; persist(); renderActivity(); } }), ' 可以打造 / 有新装备可穿时在活动条提示'));
     // 装备背包
     box.appendChild(h('h3', { class: 'group-title' }, `装备背包（${save.gearBag.length}）`));
-    if (!save.gearBag.length) box.appendChild(h('p', { class: 'muted' }, '空。换下来的、遣散角色身上的装备都会回到这里。'));
+    if (!save.gearBag.length) box.appendChild(h('p', { class: 'muted' }, '空。打好的、换下来的、遣散角色身上的装备都会放在这里。'));
     for (const it of save.gearBag) {
-      box.appendChild(h('div', { class: 'gear-bag-row' }, gearLine(it), h('small', { class: 'muted' }, gearStatText(G.gearStats(it))),
-        h('button', { class: 'mini', onclick: () => openEquipFor(it) }, '穿给…')));
+      box.appendChild(h('div', { class: 'gear-bag-row' }, gearLine(it), h('small', { class: 'muted' }, G.gearUsable(it) ? gearStatText(G.gearStats(it)) : '这个部位以后由饰品线开放'),
+        G.gearUsable(it) ? h('button', { class: 'mini', onclick: () => openEquipFor(it) }, '穿给…') : h('span', null)));
     }
     return box;
   }
@@ -528,14 +550,14 @@
   /** 给角色的某个部位挑一件：背包里的，或别的角色身上的 */
   function openSlotChooser(c, slot) {
     const opts = [];
-    for (const it of save.gearBag) if (it.slot === slot) opts.push({ it, from: null });
+    for (const it of save.gearBag) if (it.slot === slot && G.gearUsable(it)) opts.push({ it, from: null });
     for (const o of save.roster) if (o.id !== c.id && o.equip[slot]) opts.push({ it: o.equip[slot], from: o });
-    opts.sort((a, b) => b.it.tier - a.it.tier);
+    opts.sort((a, b) => G.gearRank(b.it) - G.gearRank(a.it));
     const list = h('div', { class: 'gear-choose' }, opts.length ? opts.map(({ it, from }) => h('button', { class: 'gear-opt', onclick: () => { adhoc = null; G.equip(save, c.id, it.id); toast(`${c.name} 穿上 ${G.gearName(it)}${from ? `（从 ${from.name} 身上换来）` : ''}`); changed(); } },
       gearLine(it), h('small', null, ` ${gearStatText(G.gearStats(it))}${from ? ` · 在 ${from.name} 身上` : ' · 背包'}`)))
       : h('p', { class: 'muted' }, `没有可穿的${SLOT_NAME()[slot]}。去洞府的锻造房打造。`));
     showModal({ title: `${c.name} · ${SLOT_NAME()[slot]}`, body: [c.equip[slot] ? `现在：${G.gearName(c.equip[slot])}（${gearStatText(G.gearStats(c.equip[slot]))}），换下的回背包。` : '这个部位还空着。'], extra: list,
-      buttons: [{ label: '取消' }].concat(save.unlocks.cave ? [{ label: '去锻造房', onClick: () => { forgeSel.slot = slot; forgeSel.target = c.id; tab = 'cave'; render(); } }] : []) });
+      buttons: [{ label: '取消' }].concat(save.unlocks.cave ? [{ label: '去锻造房', onClick: () => { forgeSel.slot = slot; tab = 'cave'; render(); } }] : []) });
   }
 
   // ================= 角色页 =================
@@ -577,7 +599,7 @@
     if (!save.unlocks.forge || !c.equip) return null;
     const mine = save.roster.includes(c);
     if (!mine) return null;   // 招募候选 / 待定新人没有装备
-    return h('div', { class: 'gear-slots' }, DAO.CONFIG.game.forge.slots.map((slot) => {
+    return h('div', { class: 'gear-slots' }, G.gearSlots().map((slot) => {
       const it = c.equip[slot];
       return h('div', { class: 'gear-slot' + (it ? '' : ' empty') },
         UI.artBox(G.recipe(slot).art, { use: 'icon', text: SLOT_NAME()[slot], cls: 'cs-label gear-icon', title: SLOT_NAME()[slot] }),
@@ -596,6 +618,9 @@
       if (save.unlocks.forge) box.appendChild(h('button', { class: 'mini', onclick: () => doGather(c.id) }, '派去采集'));
     } else if (stt === 'lineup') {
       box.appendChild(h('button', { class: 'mini', disabled: save.lineup.length <= 1, onclick: () => { G.removeFromLineup(save, c.id); changed(); } }, '下阵'));
+    } else if (stt === 'craft') {
+      box.appendChild(h('span', { class: 'muted' }, `打造${SLOT_NAME()[save.crafting.slot]}中`));
+      box.appendChild(h('button', { class: 'mini', onclick: doCancelCraft }, '取消打造'));
     } else if (stt === 'gather') {
       box.appendChild(h('button', { class: 'mini primary', onclick: () => { G.stopGather(save, c.id, gnow()); changed(); step(); } }, '召回'));
     } else {
@@ -635,7 +660,7 @@
   function rosterPage() {
     const wrap = h('div', { class: 'roster-page' });
     if (G.showFormation(save)) wrap.appendChild(formationBoard());
-    const groups = [['lineup', `上阵（${save.lineup.length}/${G.slots(save)}）`], ['research', '研究中'], ['gather', '采集中'], ['idle', '闲置']];
+    const groups = [['lineup', `上阵（${save.lineup.length}/${G.slots(save)}）`], ['research', '研究中'], ['craft', '打造中'], ['gather', '采集中'], ['idle', '闲置']];
     for (const [key, label] of groups) {
       const list = save.roster.filter((c) => G.status(save, c.id) === key);
       if (key === 'lineup') list.sort((a, b) => save.lineup.findIndex((e) => e.id === a.id) - save.lineup.findIndex((e) => e.id === b.id));
@@ -782,11 +807,11 @@
     formation: () => ({ title: '布阵', body: ['现在两人上阵，可以分前后排了。', '剑修近战，顶在前排挨打；法修远程，站后排输出。敌方近战只能打前排，前排倒下后排才会暴露。', '默认已按剑前法后排好，可以在「角色」页调换。'], btn: '就这样' }),
     'done:qingshi': () => ({ title: '青石山第一段通关', body: ['首领掉了一张技能卡。', '第二段「黑风林」已开放：小怪会掉技能卡，可以重掷、换卡。'], btn: '好' }),
     'done:heifeng': () => ({ title: '黑风林第二段通关', body: ['第三段「铁岩谷」已开放：铁背熊皮糙肉厚、赤狐伤害高，3 个人硬拼很吃力。', '上阵位现在可以研究到第 4 个了（洞府 → 研究）。多一个人上阵，这一段就顺得多。'], btn: '好' }),
-    'done:tieyan': () => ({ title: '铁岩谷第三段通关', body: ['阶段 3 的内容到这里为止。', '可以继续采集、把装备换成上品，或者挂机升级。'], btn: '好' }),
+    'done:tieyan': () => ({ title: '铁岩谷第三段通关', body: ['阶段 3 的内容到这里为止。', '可以继续采集、打造更好品质的装备，或者挂机升级。'], btn: '好' }),
     gather: () => {
       const plan = G.gatherPlan(save, gnow());
       const opts = save.gather.ids.length ? null : G.gatherOptions(save, gnow());
-      const first = G.forgeCost(DAO.CONFIG.game.forge.guideTier);
+      const first = G.craftCost(DAO.CONFIG.game.forge.guideSlot);
       const body = ['洞府开了「采集」和「锻造房」：灵矿 + 金币能打造装备，第一段的首领山魈就得靠装备过。灵矿要派人去采——采集中的人不能上阵、不能研究，按秒产出，力资质越高越快。'];
       if (save.gather.ids.length) body.push('已经有人在采集了。');
       else if (plan && plan.mode === 'recruit') body.push(`上阵位已经满了，招一位新人（${plan.cost} 金，3 选 1，默认挑力资质最高的）——他没有上阵位，正好去采灵矿。攒够 ${first.ore} 灵矿就能打第一件装备。`);
@@ -795,11 +820,20 @@
       return { title: '采集灵矿', body, btn: plan ? planLabel(plan) : '没有能派的人', disabled: !plan && !save.gather.ids.length, plans: opts && opts.length ? opts : null };
     },
     forge: () => {
-      const F = DAO.CONFIG.game.forge;
-      const item = { slot: F.guideSlot, tier: F.guideTier };
-      const tid = save.lineup.some((e) => e.id === G.starter(save).id) ? G.starter(save).id : (save.lineup[0] || {}).id;
-      const c = G.getChar(save, tid);
-      return { title: '打第一件装备', body: [`灵矿够了。在锻造房打一把${G.gearName(item)}（${gearStatText(G.gearStats(item))}，${costText(G.forgeCost(F.guideTier))}），给 ${c ? c.name : '开局角色'} 穿上。`, '中品、上品数值更高，但要更多灵矿和金币。一套中品白装能让这一段顺很多。以后灵矿够打下一件时，活动条会提示。'], btn: '打造并穿上' };
+      const slot = DAO.CONFIG.game.forge.guideSlot;
+      const opts = G.craftOptions(save, slot);
+      const plan = opts[0];
+      const cost = G.craftCost(slot);
+      const body = [`灵矿够了，可以打第一件装备：派一个人去锻造房打${SLOT_NAME()[slot]}（${costText(cost)}）。打造要一点时间，期间他不能上阵、研究、采集；力越高打得越快。品质打出来才知道（现在白 90%、绿 10%），打好放进装备背包，再穿到上阵角色身上。`];
+      if (plan && plan.mode === 'recruit') body.push(`现在没有闲人，招一位新人去打（${plan.cost} 金，3 选 1，默认挑力资质最高的）。`);
+      if (plan && plan.mode === 'gather') body.push(`现在没有闲人，先让采集的 ${G.getChar(save, plan.charId).name} 去打，打完他回到闲置。`);
+      return { title: '打第一件装备', body, btn: plan ? craftPlanLabel(plan, slot) : '没有能派的人', disabled: !plan, plans: opts.length > 1 ? opts : null };
+    },
+    equipFirst: () => {
+      const pl = G.firstEquipPlan(save);
+      if (!pl) return { title: '装备打好了', body: ['装备已经在背包里了，去角色页给上阵的人穿上。'], btn: '好' };
+      const it = G.findGear(save, pl.gearId).item, c = G.getChar(save, pl.charId);
+      return { title: '装备打好了', body: [`打出了 ${G.gearName(it)}（${gearStatText(G.gearStats(it))}），放在装备背包里。`, `给 ${c.name} 穿上？以后打好的装备也在背包里，可以在角色页的装备槽穿上、换下、在角色间换。`], btn: `穿给 ${c.name}` };
     },
     moreSlots: () => {
       const nx = G.researchNext(save);
@@ -816,15 +850,25 @@
     if (p.mode === 'lineup') return `让上阵的 ${G.getChar(save, p.charId).name} 去采集`;
     return '派去采集';
   }
+  function craftPlanLabel(p, slot) {
+    const sn = SLOT_NAME()[slot];
+    if (p.mode === 'recruit') return `招一位去打${sn}（3 选 1）· ${p.cost} 金`;
+    if (p.mode === 'idle') return `派 ${G.getChar(save, p.charId).name} 去打${sn}`;
+    if (p.mode === 'gather') return `让采集的 ${G.getChar(save, p.charId).name} 去打${sn}`;
+    if (p.mode === 'lineup') return `让上阵的 ${G.getChar(save, p.charId).name} 去打${sn}`;
+    return '去打造';
+  }
   function gearUpGuide(id) {
     const st = G.stageById(id.slice(7));
-    const plan = G.planUpgrades(save);
+    const plan = G.planUpgrades(save, gnow());
     return {
-      title: '该去打装备了',
-      body: [`${st.id} ${st.name} 打不过。灵矿和金币够了，先把装备补上：`,
-        plan.length ? plan.map((u) => `${G.getChar(save, u.charId).name}：${u.kind === 'equip' ? '穿上背包里的' : '打造'}${DAO.CONFIG.game.forge.tierNames[u.tier]}${SLOT_NAME()[u.slot]}${u.kind === 'forge' ? `（${costText(u.cost)}）` : ''}`).join('；') + '。' : '暂时没有能做的。',
-        '也可以去锻造房自己挑。'],
-      btn: '一键打造并穿上',
+      title: '该去补装备了',
+      body: [`${st.id} ${st.name} 打不过，先把装备补上：`,
+        plan.length ? plan.map((u) => u.kind === 'equip'
+          ? `${G.getChar(save, u.charId).name} 穿上背包里的 ${G.gearName(G.findGear(save, u.gearId).item)}`
+          : `派 ${G.getChar(save, u.crafter).name} 去打造${SLOT_NAME()[u.slot]}（给 ${G.getChar(save, u.charId).name}，${costText(u.cost)}）`).join('；') + '。' : '暂时没有能做的。',
+        '打造要时间，打好后再遇到卡关会提示你穿上。也可以去锻造房和角色页自己安排。'],
+      btn: '照这样做',
     };
   }
   const GUIDES_END = {
@@ -868,7 +912,8 @@
     if (save.recruitChoice && modalClosedFor !== 'choice') {
       const ch = save.recruitChoice;
       const di = G.defaultChoice(save);
-      const why = ch.reason === 'gather' ? '这次是为采集招人：默认挑力资质最高的（采集更快），选完直接去采灵矿。' : '默认挑综合资质（三项成长的平均）最高的。';
+      const why = ch.reason === 'gather' ? '这次是为采集招人：默认挑力资质最高的（采集更快），选完直接去采灵矿。'
+        : ch.reason === 'craft' ? `这次是为打造招人：默认挑力资质最高的（打得更快），选完直接去打${SLOT_NAME()[ch.slot] || '装备'}。` : '默认挑综合资质（三项成长的平均）最高的。';
       spec = { title: ch.free ? '首抽 · 3 选 1' : '招募 · 3 选 1', body: [`挑一位留下，其余两位离开。${why}可以先「稍后再选」，候选会一直留着，但不能放弃重抽。`], btn: `选 ${ch.candidates[di].name}（默认）`, wide: true };
       onOk = () => doChoose(di);
       extra = h('div', { class: 'choice-grid' }, ch.candidates.map((c, i) => h('div', { class: 'choice' + (i === di ? ' def' : '') },
@@ -889,17 +934,18 @@
         const info = G.ackGuide(save, g, gnow(), plan ? { plan } : undefined);
         if (!info.ok) { toast('现在做不了：' + (info.error || ''), 'bad'); return; }
         if (info.charId && g === 'gather') toast(`${G.getChar(save, info.charId).name} 开始采集灵矿`, 'good');
-        if (info.item) toast(`打造了 ${G.gearName(info.item)}${info.charId ? `，${G.getChar(save, info.charId).name} 已穿上` : ''}`, 'good');
-        if (info.upgrades && info.upgrades.length) toast(`装备补上了 ${info.upgrades.length} 件`, 'good');
+        if (info.charId && g === 'forge') toast(`${G.getChar(save, info.charId).name} 开始打造${SLOT_NAME()[info.slot]}`, 'good');
+        if (info.equipped) toast(`${G.getChar(save, info.equipped.charId).name} 穿上 ${G.gearName(info.equipped.item)}`, 'good');
+        if (info.upgrades && info.upgrades.length) toast(`装备：${info.upgrades.map((u) => (u.kind === 'equip' ? '穿上 1 件' : '开始打造' + SLOT_NAME()[u.slot])).join('、')}`, 'good');
         if (info.recruit && info.recruit.ok) modalClosedFor = null;   // 弹 3 选 1
         if (info.researcher) toast(`${G.getChar(save, info.researcher).name} 开始研究上阵位`);
         changed();
         step();
       };
       if (spec.plans && spec.plans.length > 1) {
-        extra = h('div', { class: 'swap-list' }, spec.plans.slice(1).map((p) => h('button', { class: 'mini', onclick: () => { els.modal.hidden = true; ackWith(p); } }, planLabel(p))));
+        extra = h('div', { class: 'swap-list' }, spec.plans.slice(1).map((p) => h('button', { class: 'mini', onclick: () => { els.modal.hidden = true; ackWith(p); } }, g === 'forge' ? craftPlanLabel(p, DAO.CONFIG.game.forge.guideSlot) : planLabel(p))));
       }
-      onOk = g === 'gather' || g === 'moreSlots' || g === 'forge' || g.startsWith('gearUp:') ? () => ackWith(spec.plans ? spec.plans[0] : null) : () => {
+      onOk = g === 'gather' || g === 'moreSlots' || g === 'forge' || g === 'equipFirst' || g.startsWith('gearUp:') ? () => ackWith(spec.plans ? spec.plans[0] : null) : () => {
         const info = G.ackGuide(save, g, gnow());
         if (info.recruit && info.recruit.ok) modalClosedFor = null;   // 弹 3 选 1
         if (info.researcher) toast(`${G.getChar(save, info.researcher).name} 开始研究上阵位`);
@@ -955,7 +1001,7 @@
     if (!res.ok) return;
     lastRecruit = res.char;
     if (res.needsDecision) toast(`选了 ${res.char.name}，但名额已满：决定遣散谁`, 'bad');
-    else toast(`${res.char.name}（${G.qualityName(res.char.quality)}${DAO.ROLE_NAMES[res.char.role]}）加入${res.gathering ? '，去采灵矿了' : G.inLineup(save, res.char.id) ? '，已上阵' : ''}`, 'good');
+    else toast(`${res.char.name}（${G.qualityName(res.char.quality)}${DAO.ROLE_NAMES[res.char.role]}）加入${res.gathering ? '，去采灵矿了' : res.crafting ? '，去打造了' : G.inLineup(save, res.char.id) ? '，已上阵' : ''}`, 'good');
     modalClosedFor = null;
     changed();
     step();
@@ -973,21 +1019,27 @@
     changed();
     step();
   }
-  function doForge() {
-    const tid = forgeSel.target;
-    const item = G.forge(save, forgeSel.slot, forgeSel.tier, { stat: forgeSel.stat });
-    if (!item) { toast('灵矿或金币不够', 'bad'); return; }
-    if (tid) G.equip(save, tid, item.id);
-    toast(`打造了 ${G.gearName(item)}${tid ? `，${G.getChar(save, tid).name} 已穿上` : '，放进装备背包'}`, 'good');
-    forgeSel.target = null;
+  function doCraft() {
+    const slot = forgeSel.slot, id = forgeSel.crafter;
+    if (!G.startCraft(save, slot, id, gnow())) { toast('现在打不了：灵矿 / 金币不够，或者已经在打造', 'bad'); return; }
+    toast(`${G.getChar(save, id).name} 开始打造${SLOT_NAME()[slot]}（约 ${fmtGame(save.crafting.durMs)}）`);
+    forgeSel.crafter = null;
+    changed();
+    step();
+  }
+  function doCancelCraft() {
+    const id = G.cancelCraft(save);
+    if (!id) return;
+    toast(`取消打造，材料已退还；${G.getChar(save, id).name} 回到闲置`);
     changed();
     step();
   }
   function doUpgradeHint() {
     const u = G.forgeHint(save);
     if (!u) return;
-    const item = G.doUpgrade(save, u);
-    if (item) toast(`打造了 ${G.gearName(item)}，${G.getChar(save, u.charId).name} 已穿上`, 'good');
+    const r = G.doUpgrade(save, u, gnow());
+    if (r && u.kind === 'equip') toast(`${G.getChar(save, u.charId).name} 穿上 ${G.gearName(r)}`, 'good');
+    else if (r) toast(`${G.getChar(save, u.crafter).name} 开始打造${SLOT_NAME()[u.slot]}`);
     changed();
     step();
   }
@@ -1124,6 +1176,28 @@
   }
 
   /** 每秒：研究倒计时、研究完成 */
+  /** 洞府页的状态签名：能不能招募 / 打造 / 研究 / 采集、谁在做什么、背包件数。变了就重画，数字类的就地更新（liveText） */
+  function caveSignature() {
+    const slots = G.gearSlots();
+    return JSON.stringify([G.recruitBlock(save), save.research.active && save.research.active.level, G.researchNext(save) && G.researchBlock(save, G.pickResearcher(save) || ''),
+      slots.map((sl) => G.craftBlock(save, sl)), save.crafting && [save.crafting.slot, save.crafting.charId], save.gather.ids.join(),
+      save.roster.map((c) => c.id + G.status(save, c.id)).join(), save.gearBag.length, save.gold >= (G.researchNext(save) || {}).gold]);
+  }
+  /** 带 data-live 的数字就地刷新（灵矿、金币、倒计时、进度条） */
+  function liveText() {
+    const now = gnow();
+    const ra = save.research.active, job = save.crafting;
+    for (const el of document.querySelectorAll('[data-live]')) {
+      const k = el.dataset.live;
+      if (k === 'ore') el.textContent = oreText(save.ore);
+      else if (k === 'gold') el.textContent = UI.num(save.gold);
+      else if (k === 'craftLeft' && job) el.textContent = fmtGame(G.craftRemainingMs(save));
+      else if (k === 'craftFill' && job) el.style.width = Math.min(100, 100 * job.progressMs / job.durMs) + '%';
+      else if (k === 'researchLeft' && ra) el.textContent = fmtGame(ra.endsAt - now);
+    }
+  }
+
+  /** 每秒：研究倒计时、研究完成、采集、打造、洞府页实时刷新 */
   function tick() {
     if (!save) return;
     const now = gnow();
@@ -1131,15 +1205,24 @@
       G.tickGather(save, now);
       const t = oreText(save.ore);
       if (els.oreVal) els.oreVal.textContent = t;
-      if (els.actOre && els.actOre.isConnected) els.actOre.textContent = t;
-      if (els.actOre2 && els.actOre2.isConnected) els.actOre2.textContent = t;
-      if (els.caveOre && els.caveOre.isConnected) els.caveOre.textContent = t;
+      const made = G.tickCraft(save, now);
+      if (made) {
+        toast(`打好了：${G.gearName(made.item)}（进了装备背包）；${G.getChar(save, made.charId).name} 回到闲置`, 'good');
+        persist();
+        render();
+        if (save.auto.on && activity.type !== 'push') step();
+      }
       const hint = G.forgeHint(save);
-      if ((hint ? hint.charId + hint.slot + hint.tier : '') !== hintSig) renderActivity();
-      // 卡关补装备的引导：灵矿攒够时弹出
+      if (hintKey(hint) !== hintSig) renderActivity();
+      // 卡关补装备 / 第一件装备之类的引导：条件够了时弹出
       if (save.auto.on && activity.type === 'farm' && G.autoDecide(save).type === 'wait') step();
       if (now - lastPersist > 5000) { lastPersist = now; persist(); }
     }
+    if (tab === 'cave' && els.otherPage && els.otherPage.isConnected) {
+      const sig = caveSignature();
+      if (sig !== caveSig) { caveSig = sig; renderMain(); }
+    }
+    liveText();
     const done = G.tickResearch(save, now);
     if (done) {
       const c = G.getChar(save, done.charId);
@@ -1151,7 +1234,7 @@
     }
     const ra = save.research.active;
     if (ra && els.researchLeft) {
-      els.researchLeft.textContent = fmtTime(ra.endsAt - gnow());
+      els.researchLeft.textContent = fmtGame(ra.endsAt - gnow());
       if (els.researchFill) els.researchFill.style.width = Math.min(100, 100 * (1 - (ra.endsAt - gnow()) / (ra.endsAt - ra.startedAt))) + '%';
     }
   }

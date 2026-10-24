@@ -84,7 +84,7 @@ const bossLv = {};
 for (const role of ROLES) {
   const snaps = sims.std[role].map((r) => r.snaps[BOSS2]).filter(Boolean);
   const withC = P.ladder(snaps, BOSS2, LV, null, 5), noC = P.ladder(snaps, BOSS2, LV, P.stripCards, 5);
-  const gear = snaps.map((s) => G.lineupChars(s).reduce((a, x) => a + C.forge.slots.filter((sl) => x.char.equip[sl]).length, 0));
+  const gear = snaps.map((s) => G.lineupChars(s).reduce((a, x) => a + G.gearSlots().filter((sl) => x.char.equip[sl]).length, 0));
   const arrive = snaps.map((s) => G.starter(s).level);
   bossLv[role] = { card: withC.first, none: noC.first, arrive: q(arrive, 0.5), gear: q(gear, 0.5), lineup: q(snaps.map((s) => G.lineupChars(s).length + (s.research.active ? 1 : 0)), 0.5) };
   log(`### ${RN[role]}开局（快照：开局角色中位 Lv${bossLv[role].arrive}，上阵 ${bossLv[role].lineup} 人，上阵角色装备中位 ${bossLv[role].gear} 件）`);

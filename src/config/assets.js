@@ -77,7 +77,6 @@
       // 装备
       'gear.weapon': null,                 // 装备：武器
       'gear.chest': null,                  // 装备：胸甲
-      'gear.ring': null,                   // 装备：戒指
     },
   };
 

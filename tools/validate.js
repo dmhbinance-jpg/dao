@@ -23,12 +23,16 @@
     ['game.gold.killMul', '金币掉落倍率'],
     ['game.exp.killMul', '经验倍率'],
     ['game.recruit.cost', '招募价格（固定）'],
-    ['game.forge.costs.0.ore', '锻造下品：灵矿'],
-    ['game.forge.costs.0.gold', '锻造下品：金币'],
-    ['game.forge.costs.1.ore', '锻造中品：灵矿'],
-    ['game.forge.costs.1.gold', '锻造中品：金币'],
-    ['game.forge.costs.2.ore', '锻造上品：灵矿'],
-    ['game.forge.costs.2.gold', '锻造上品：金币'],
+    ['game.forge.recipes.weapon.cost.ore', '锻造武器：灵矿'],
+    ['game.forge.recipes.weapon.cost.gold', '锻造武器：金币'],
+    ['game.forge.recipes.weapon.baseSec', '锻造武器：基础时长（秒）'],
+    ['game.forge.recipes.chest.cost.ore', '锻造胸甲：灵矿'],
+    ['game.forge.recipes.chest.cost.gold', '锻造胸甲：金币'],
+    ['game.forge.recipes.chest.baseSec', '锻造胸甲：基础时长（秒）'],
+    ['game.production.craft.statCoef', '打造时长系数（时长 ÷ (1 + 打造值 × 系数)）'],
+    ['game.production.qualityTables.1.0', '1 级工坊：白 %'],
+    ['game.production.qualityTables.1.1', '1 级工坊：绿 %'],
+    ['game.production.qualityTables.1.2', '1 级工坊：蓝 %'],
   ];
   const LABELS = Object.fromEntries(PINNED);
   Object.assign(LABELS, {
@@ -47,7 +51,7 @@
     characters: 'V0 角色', defaultTeams: 'V0 默认阵容', level: 'V0 等级', playback: '回放节奏', assets: '资源清单', shapeTags: '形状标签',
     'game.starters': '开局角色', 'game.roster': '名额 / 站位', 'game.enemies': '敌人', 'game.chapters': '引导关', 'game.cards': '卡牌掉落',
     'game.exp': '经验', 'game.gold': '金币', 'game.recruit': '招募', 'game.research': '研究', 'game.auto': '自动推关', 'game.gather': '采集',
-    'game.forge': '锻造', 'game.settings': '默认设置', 'game.idle': '挂机', 'game.estimate': '时长估算（命令行）', 'game.migration': '存档迁移',
+    'game.forge': '锻造线', 'game.production': '生产线 / 品质', 'game.settings': '默认设置', 'game.idle': '挂机', 'game.estimate': '时长估算（命令行）', 'game.migration': '存档迁移',
     'game.quota': '名额扩建（预留）',
   };
   function group(path) {
@@ -62,7 +66,9 @@
     [/research\.slots\.levels\.\d+\.sec$/, { min: 1, max: 86400 }],
     [/research\.slots\.(start|max|stageCap)$/, { min: 1, max: 6, int: true }],
     [/^game\.roster\.cap$/, { min: 1, max: 50, int: true }],
-    [/forge\.costs\.\d+\.(ore|gold)$/, { min: 0, max: 1e6 }],
+    [/recipes\.\w+\.cost\.(ore|gold)$/, { min: 0, max: 1e6 }],
+    [/recipes\.\w+\.baseSec$/, { min: 1, max: 86400 }],
+    [/qualityTables\.\d+\.\d+$/, { min: 0, max: 100 }],
     [/^game\.recruit\.cost$/, { min: 0, max: 1e6 }],
     [/\.level$/, { min: 1, max: 200, int: true }],
     [/(weight|chance)$/, { min: 0, max: 1000 }],

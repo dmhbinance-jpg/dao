@@ -6,7 +6,8 @@
  *  - chapters  引导关：第一段青石山（1-4 卡关，单人难过、两人能过）、第二段黑风林（首领狐王，第一张卡能解）
  *  - cards     技能卡：第一张卡、卡池、掉落率、招募自带卡
  *  - gather    采集：闲置角色派去采灵矿，按秒连续产出（力资质越高越快），不补离线
- *  - forge     锻造房：灵矿 + 金币即时打造白装（武器 / 胸甲 / 戒指 × 下品 / 中品 / 上品）
+ *  - production 生产线：锻造（力）/ 裁缝（敏）/ 饰品（智），各 2 个部位；品质 6 档按工坊等级掷出；打造占用角色、要时间
+ *  - forge     锻造线：武器、胸甲的基础数值、花费、时长
  *  - exp/gold  击杀经验与金币
  *  - recruit   洞府招募（抽卡）：首抽免费且保底互补定位；品质决定资质区间和天赋条数
  *  - research  研究：只有「上阵位」一条，每级 +1，从 1 到 5；研究占用一个角色
@@ -20,7 +21,7 @@
   const DAO = (root.DAO = root.DAO || {});
 
   DAO.CONFIG.game = {
-    saveVersion: 5,
+    saveVersion: 6,
 
     // ===== 开局角色 =====
     starters: {
@@ -280,31 +281,52 @@
       minFactor: 0.5,            // 资质系数下限（法修力成长低，也不至于完全没用）
     },
 
-    // ===== 锻造房：灵矿 + 金币即时打造白装，不占角色，不做建筑升级 =====
-    forge: {
-      slots: ['weapon', 'chest', 'ring'],
-      slotNames: { weapon: '武器', chest: '胸甲', ring: '戒指' },
-      tierNames: ['下品', '中品', '上品'],
-      // 每个部位三档：词条固定，档位越高数值越高、花费越多。
-      recipes: {
-        weapon: { art: 'gear.weapon', name: '白铁兵刃', desc: '加攻击（物攻、法攻同时加）', tiers: [{ atk: 16 }, { atk: 26 }, { atk: 40 }] },
-        chest: { art: 'gear.chest', name: '白铁甲', desc: '加护甲和气血', tiers: [{ armor: 16, hp: 200 }, { armor: 26, hp: 320 }, { armor: 40, hp: 500 }] },
-        ring: { art: 'gear.ring', name: '白玉戒', desc: '加一项三维（打造时选力 / 敏 / 智）', stats: ['str', 'agi', 'int'], tiers: [{ value: 8 }, { value: 13 }, { value: 20 }] },
+    // ===== 生产线（设计文档第 10 节）：三条线各 2 个部位，打造值分别用力 / 敏 / 智 =====
+    // 本阶段只开锻造线；裁缝、饰品先占位（enabled: false），以后加线只改配置。
+    // 打造要派一个角色去做（占用他，期间不能上阵 / 研究 / 采集，不拿经验），按游戏时钟计时，离线不计算。
+    production: {
+      lines: {
+        forge: { name: '锻造', building: '锻造房', stat: 'str', slots: ['weapon', 'chest'], enabled: true },
+        tailor: { name: '裁缝', building: '裁缝铺', stat: 'agi', slots: ['boots', 'gloves'], enabled: false },
+        jewelry: { name: '饰品', building: '饰品坊', stat: 'int', slots: ['ring', 'amulet'], enabled: false },
       },
-      costs: [
-        { ore: 40, gold: 100 },
-        { ore: 220, gold: 600 },
-        { ore: 500, gold: 1200 },
+      slotNames: { weapon: '武器', chest: '胸甲', boots: '靴子', gloves: '护手', ring: '戒指', amulet: '项链' },
+      // 品质：打造时按工坊等级查概率表掷出，不能选；数值 = 部位基础数值 × 品质倍率
+      qualities: [
+        { id: 'white', name: '白', mult: 1.0 },
+        { id: 'green', name: '绿', mult: 1.25 },
+        { id: 'blue', name: '蓝', mult: 1.6 },
+        { id: 'purple', name: '紫', mult: 2.0 },
+        { id: 'orange', name: '橙', mult: 2.6 },
+        { id: 'red', name: '红', mult: 3.4 },
       ],
-      guideSlot: 'weapon',       // 锻造引导打的第一件
-      guideTier: 0,
-      stuckGuideChapters: ['tieyan'], // 这些章节在最新关第一次战败时排队「该去打装备了」引导（灵矿和金币够了才弹出）
+      // 工坊等级 → 各品质概率（百分比，按 qualities 的顺序）。1 级先定，其他等级占位（升级以后做）
+      qualityTables: {
+        1: [90, 10, 0, 0, 0, 0],
+        2: [80, 18, 2, 0, 0, 0],
+        3: [70, 24, 5, 1, 0, 0],
+        4: [60, 28, 9, 2.5, 0.5, 0],
+        5: [50, 30, 13, 5, 1.8, 0.2],
+      },
+      // 打造时长 = 部位 baseSec ÷ (1 + 打造值 × statCoef)，打造值 = 打造者的力 / 敏 / 智（占位公式，以后再定）
+      craft: { statCoef: 0.01 },
+    },
+
+    // ===== 锻造线（力）：武器、胸甲 =====
+    forge: {
+      // 部位：基础数值（白品质）、每件花费、基础打造时长（秒）
+      recipes: {
+        weapon: { art: 'gear.weapon', name: '玄铁兵刃', desc: '加攻击（物攻、法攻同时加）', base: { atk: 16 }, cost: { ore: 60, gold: 150 }, baseSec: 40 },
+        chest: { art: 'gear.chest', name: '玄铁甲', desc: '加护甲和气血', base: { armor: 16, hp: 200 }, cost: { ore: 60, gold: 150 }, baseSec: 40 },
+      },
+      guideSlot: 'weapon',       // 「第一件装备」引导打的部位
+      stuckGuideChapters: ['tieyan'], // 这些章节在最新关战败时排队「该去补装备了」引导
     },
 
     // ===== 默认设置 =====
     settings: {
       cardPrompts: true,     // 拿到卡、背包里有可重掷的同名卡时，自动推关停下来提示
-      forgeHints: true,      // 灵矿够打下一件装备时在活动条提示（不打断推关）
+      forgeHints: true,      // 可以打造 / 有新装备可穿时在活动条提示（不打断推关）
     },
 
     // ===== 挂机 / 战斗计时 =====
