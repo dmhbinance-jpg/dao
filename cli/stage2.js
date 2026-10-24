@@ -74,7 +74,7 @@ log();
   const s = duo('sword', 14, 'first');
   s.seedCounter = 99;
   const o1 = G.runBattle(s, '2-6', { record: true }), o2 = G.runBattle(s, '2-6', { record: true });
-  const okB = JSON.stringify(o1.result.log) === JSON.stringify(o2.result.log) && JSON.stringify(o1.drops) === JSON.stringify(o2.drops);
+  const okB = JSON.stringify(o1.result.timeline) === JSON.stringify(o2.result.timeline) && JSON.stringify(o1.drops) === JSON.stringify(o2.drops);
   const a = duo('mage', 14, 'first'), b = duo('mage', 14, 'first');
   a.rollSeed = b.rollSeed = 55; a.bag.huoyu = 3; b.bag.huoyu = 3;
   const ra = [G.insertCard(a, 'c1', 'huoyu'), G.insertCard(a, 'c1', 'huoyu')].map((x) => x.roll).join(',');

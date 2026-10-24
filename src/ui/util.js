@@ -31,6 +31,21 @@
     return el;
   };
 
+  /**
+   * 资源位：清单里有图（DAO.Art.path）就放图，否则 / 图片加载失败时退回文字色块。
+   * opts: { use: 'portrait'|'icon'|..., text: 色块上的字, cls, title }
+   */
+  UI.artBox = function (id, opts) {
+    opts = opts || {};
+    const kind = (DAO.Art && DAO.Art.kind(id)) || 'none';
+    const fallback = () => UI.h('span', { class: `art-fb art-${kind} ${opts.cls || ''}`, title: opts.title || '' }, opts.text || '');
+    const p = DAO.Art && DAO.Art.path(id, opts.use);
+    if (!p) return fallback();
+    const img = UI.h('img', { class: `art-img ${opts.cls || ''}`, src: p, alt: opts.title || '', title: opts.title || '' });
+    img.addEventListener('error', () => img.replaceWith(fallback()));
+    return img;
+  };
+
   UI.clear = (el) => { while (el.firstChild) el.removeChild(el.firstChild); return el; };
   UI.pct = (x, d = 1) => (x * 100).toFixed(d) + '%';
   UI.num = (x) => Math.round(x).toLocaleString('zh-CN');

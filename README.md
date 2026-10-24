@@ -4,11 +4,12 @@
 
 - 玩：直接用浏览器打开 `index.html`（不需要构建、不需要服务器）。
 - 开发工具：`v0.html` 是满编 5v5 战斗模拟器。
-- 命令行：`node cli/stage3.js`（阶段 3 验收）、`node cli/stage2.js` / `node cli/stage1.js`（回归）、`node cli/battle.js`（单场日志）、`node cli/sim.js 1000`（批量模拟）、`node cli/experiments.js 1000`（V0 设计验证）。
+- 命令行：`node cli/invariants.js`（不变量检查，改引擎 / 回放 / 配置后先跑）、`node cli/stage3.js`（阶段 3 验收）、`node cli/stage2.js` / `node cli/stage1.js`（回归）、`node cli/battle.js`（单场日志）、`node cli/sim.js 1000`（批量模拟）、`node cli/experiments.js 1000`（V0 设计验证）。
 
 文档：
 - `docs/STAGE3_HANDOFF.md` —— 阶段 3 交接说明，从这里开始
 - `docs/STAGE3_REPORT.md` —— 阶段 3 验收数据
+- `docs/PRESENTATION.md` —— 表现层接口：战斗事件、回放渲染器、资源清单（给以后加图片和动画用）
 - `docs/STAGE2_HANDOFF.md`、`docs/STAGE2_REPORT.md` —— 阶段 2
 - `docs/STAGE1_HANDOFF.md`、`docs/STAGE1_REPORT.md` —— 阶段 1
 - `docs/CHANGELOG.md` —— 变更记录

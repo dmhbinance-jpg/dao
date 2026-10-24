@@ -168,6 +168,7 @@
   function charDef(c, row) {
     return {
       id: c.id, name: c.name, title: DAO.ROLE_NAMES[c.role], role: c.role, row: row || 'front',
+      art: c.art || (cfg().starters[c.role] || {}).art || null,
       level: c.level, base: c.base, growth: c.growth,
       innate: c.innate, branch: c.branch, talents: c.talents,
       activeCard: c.card ? { id: c.card.id, roll: c.card.roll } : null, passiveCard: null,
@@ -411,7 +412,7 @@
   function durationMs(result, speed) {
     const P = DAO.CONFIG.playback;
     const actions = result.units.reduce((a, u) => a + u.stats.actions, 0);
-    return (P.start + actions * P.action + result.rounds * P.round) / (speed || 1);
+    return (P.battleStart + actions * P.action + result.rounds * P.roundStart) / (speed || 1);
   }
   function backgroundBattleMs(o) {
     return durationMs(o.result, cfg().idle.speed) + cfg().idle.gapMs;

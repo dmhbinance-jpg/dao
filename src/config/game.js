@@ -25,7 +25,7 @@
     // ===== 开局角色 =====
     starters: {
       sword: {
-        role: 'sword', title: '剑修',
+        role: 'sword', title: '剑修', art: 'unit.sword',
         desc: '近战物理。力量高、气血厚，只能先打前排；前排倒下后才能打到后排。',
         base: { str: 14, agi: 10, int: 4 },
         growth: { str: 3.0, agi: 2.0, int: 0.8 },   // 每级加的三维（成长资质，中等）
@@ -33,7 +33,7 @@
         talents: [{ id: 'jianxin', roll: 0.5 }],     // 剑心：剑系伤害 +13%（和剑系卡标签匹配）
       },
       mage: {
-        role: 'mage', title: '法修',
+        role: 'mage', title: '法修', art: 'unit.mage',
         desc: '远程法术。智力高、气血薄，可以打任意目标，连珠火弹射多次。',
         base: { str: 4, agi: 10, int: 14 },
         growth: { str: 0.8, agi: 2.0, int: 3.0 },
@@ -54,54 +54,54 @@
     // exp / gold：每级击杀奖励基数（实际 = 基数 × 敌人等级 × killMul）
     enemies: {
       wolf: {
-        name: '灰狼', role: 'beast', basic: 'beast', innate: 'pounce', branch: 0,
+        art: 'enemy.wolf', name: '灰狼', role: 'beast', basic: 'beast', innate: 'pounce', branch: 0,
         base: { str: 5, agi: 8, int: 1 }, growth: { str: 2.0, agi: 1.4, int: 0.4 },
         hpMul: 0.5, exp: 1.0, gold: 1.0, talents: [],
       },
       boar: {
-        name: '野猪', role: 'beast', basic: 'beast', innate: 'gore', branch: 0,
+        art: 'enemy.boar', name: '野猪', role: 'beast', basic: 'beast', innate: 'gore', branch: 0,
         base: { str: 7, agi: 3, int: 1 }, growth: { str: 2.2, agi: 0.9, int: 0.4 },
         hpMul: 0.85, exp: 1.5, gold: 1.5, talents: [],
       },
       stoneboar: {
-        name: '石甲猪', role: 'beast', basic: 'beast', innate: 'gore', branch: 0,
+        art: 'enemy.stoneboar', name: '石甲猪', role: 'beast', basic: 'beast', innate: 'gore', branch: 0,
         base: { str: 9, agi: 3, int: 1 }, growth: { str: 2.4, agi: 0.9, int: 0.4 },
         hpMul: 1.6, exp: 3.0, gold: 3.0, talents: [{ id: 'tiepi', roll: 1 }],
       },
       fox: {
-        name: '狐妖', role: 'demon', basic: 'demon', innate: 'foxfire', branch: 0,
+        art: 'enemy.fox', name: '狐妖', role: 'demon', basic: 'demon', innate: 'foxfire', branch: 0,
         base: { str: 2, agi: 9, int: 6 }, growth: { str: 0.5, agi: 1.5, int: 1.8 },
         hpMul: 0.45, exp: 1.5, gold: 1.5, talents: [],
       },
       shanxiao: {
-        name: '山魈', title: '首领', role: 'beast', basic: 'beast', innate: 'shanxiao', branch: 0, boss: true,
+        art: 'enemy.shanxiao', name: '山魈', title: '首领', role: 'beast', basic: 'beast', innate: 'shanxiao', branch: 0, boss: true,
         base: { str: 10, agi: 6, int: 3 }, growth: { str: 2.4, agi: 1.4, int: 0.8 },
         hpMul: 2.6, exp: 6.0, gold: 10.0, talents: [{ id: 'tiepi', roll: 0.5 }],
       },
       blackwolf: {
-        name: '黑风狼', role: 'beast', basic: 'beast', innate: 'pounce', branch: 0,
+        art: 'enemy.blackwolf', name: '黑风狼', role: 'beast', basic: 'beast', innate: 'pounce', branch: 0,
         base: { str: 7, agi: 10, int: 1 }, growth: { str: 2.3, agi: 1.6, int: 0.4 },
         hpMul: 0.6, exp: 1.3, gold: 1.3, talents: [],
       },
       ironbear: {
-        name: '铁背熊', role: 'beast', basic: 'beast', innate: 'gore', branch: 0,
+        art: 'enemy.ironbear', name: '铁背熊', role: 'beast', basic: 'beast', innate: 'gore', branch: 0,
         base: { str: 10, agi: 4, int: 1 }, growth: { str: 2.6, agi: 1.0, int: 0.4 },
         hpMul: 1.6, dmgUp: 0.8, exp: 2.5, gold: 2.5, talents: [{ id: 'tiepi', roll: 0.5 }],
       },
       redfox: {
-        name: '赤狐', role: 'demon', basic: 'demon', innate: 'foxfire', branch: 0,
+        art: 'enemy.redfox', name: '赤狐', role: 'demon', basic: 'demon', innate: 'foxfire', branch: 0,
         base: { str: 2, agi: 10, int: 8 }, growth: { str: 0.5, agi: 1.6, int: 2.2 },
         hpMul: 0.55, dmgUp: 0.8, exp: 2.0, gold: 2.0, talents: [],
       },
       bearking: {
         // 首领：前排硬抗，靠「山啸」群伤；没有特殊机制，就是皮厚伤高——考验装备。
-        name: '铁背熊王', title: '首领', role: 'beast', basic: 'beast', innate: 'shanxiao', branch: 0, boss: true,
+        art: 'enemy.bearking', name: '铁背熊王', title: '首领', role: 'beast', basic: 'beast', innate: 'shanxiao', branch: 0, boss: true,
         base: { str: 12, agi: 6, int: 2 }, growth: { str: 2.8, agi: 1.2, int: 0.6 },
         hpMul: 3.0, dmgUp: 1.0, exp: 10.0, gold: 15.0, talents: [{ id: 'tiepi', roll: 1 }],
       },
       foxking: {
         // 首领机制：躲在后排、开场护盾；「妖风阵」让其他妖兽护甲 / 法抗 +60（不加自己）。本体血薄、伤害高——先越过前排打掉它最划算。
-        name: '黑风狐王', title: '首领', role: 'demon', basic: 'demon', innate: 'yaofengzhen', branch: 0, boss: true,
+        art: 'enemy.foxking', name: '黑风狐王', title: '首领', role: 'demon', basic: 'demon', innate: 'yaofengzhen', branch: 0, boss: true,
         base: { str: 4, agi: 10, int: 10 }, growth: { str: 0.8, agi: 1.6, int: 4.0 },
         hpMul: 0.5, dmgUp: 2.5, exp: 8.0, gold: 12.0, talents: [{ id: 'yaofeng', roll: 1 }],
       },
@@ -277,9 +277,9 @@
       tierNames: ['下品', '中品', '上品'],
       // 每个部位三档：词条固定，档位越高数值越高、花费越多。
       recipes: {
-        weapon: { name: '白铁兵刃', desc: '加攻击（物攻、法攻同时加）', tiers: [{ atk: 12 }, { atk: 24 }, { atk: 40 }] },
-        chest: { name: '白铁甲', desc: '加护甲和气血', tiers: [{ armor: 12, hp: 150 }, { armor: 24, hp: 300 }, { armor: 40, hp: 500 }] },
-        ring: { name: '白玉戒', desc: '加一项三维（打造时选力 / 敏 / 智）', stats: ['str', 'agi', 'int'], tiers: [{ value: 6 }, { value: 12 }, { value: 20 }] },
+        weapon: { art: 'gear.weapon', name: '白铁兵刃', desc: '加攻击（物攻、法攻同时加）', tiers: [{ atk: 12 }, { atk: 24 }, { atk: 40 }] },
+        chest: { art: 'gear.chest', name: '白铁甲', desc: '加护甲和气血', tiers: [{ armor: 12, hp: 150 }, { armor: 24, hp: 300 }, { armor: 40, hp: 500 }] },
+        ring: { art: 'gear.ring', name: '白玉戒', desc: '加一项三维（打造时选力 / 敏 / 智）', stats: ['str', 'agi', 'int'], tiers: [{ value: 6 }, { value: 12 }, { value: 20 }] },
       },
       costs: [
         { ore: 20, gold: 500 },
@@ -319,5 +319,6 @@
   };
 
   // 播放节奏（毫秒，1× 速度）。V0 播放器、战斗回放和后台计时共用。
-  DAO.CONFIG.playback = { action: 700, round: 250, start: 400, trigger: 300, end: 0 };
+  // 回放节奏（1× 速度下每一拍的毫秒数，按根事件类型）；只影响播放，不影响战斗结果
+  DAO.CONFIG.playback = { battleStart: 400, roundStart: 250, action: 700, battleEnd: 0 };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

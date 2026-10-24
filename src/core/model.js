@@ -37,6 +37,7 @@
     s.id = card.id;
     s.name = card.name;
     s.source = 'card';
+    s.art = card.art || null;
     s.rolled = { key: card.roll.key, value: v, roll: cardInst.roll };
     return withShapeTag(s);
   }
@@ -48,6 +49,7 @@
     s.id = def.id + (branch ? '_B' : '_A');
     s.baseName = def.name;
     s.source = 'innate';
+    s.art = def.art || null;
     return withShapeTag(s);
   }
 
@@ -189,6 +191,7 @@
       charId: charId || ch.id,
       side, row, slot,
       name: ch.name, title: ch.title, role: ch.role, level,
+      art: ch.art || 'unit.' + ch.role,   // 表现层资源 id（见 config/assets.js）；没配就按定位
       exp: ch.exp || 0, // 被击杀时给击杀者的经验（敌人用）
       base, mods, skills, cds, triggers,
       talentInfo, passiveInfo,

@@ -492,3 +492,16 @@ button.ghost { background: transparent; }
 .gear-choose { display: grid; gap: 6px; margin-top: 8px; }
 .gear-opt { text-align: left; display: flex; flex-wrap: wrap; gap: 4px; align-items: baseline; }
 .char-card.st-gather { border-left: 3px solid var(--shield); }
+
+/* ===== 表现层预留：资源位（有图显示图，没图退回文字色块） ===== */
+.art-img { display: block; object-fit: cover; }
+img.role-glyph { border-radius: 50%; background: var(--paper-2); }
+.u-head { display: flex; align-items: center; gap: 6px; }
+.u-head .u-name { flex: 1; min-width: 0; }
+.u-art { flex: none; width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; font-size: 12px; font-weight: 700; color: #fff8ee; }
+.art-fb.u-art.side-A { background: var(--a); }
+.art-fb.u-art.side-B { background: var(--b); }
+img.u-art { background: var(--paper-2); }
+img.gear-icon, img.card-icon { width: 28px; height: 28px; border-radius: 3px; }
+.u-head .u-name { flex-wrap: wrap; gap: 0 6px; }
+.u-head .u-name small { margin-left: auto; }

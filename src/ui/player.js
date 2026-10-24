@@ -14,7 +14,7 @@
     const errs = DAO.Model.validateLineup(A).concat(DAO.Model.validateLineup(B));
     if (errs.length) { view.setStatus('阵容不合法：' + errs.join('；')); return; }
     const battle = new DAO.Battle(A, B, { seed: UI.state.seed, record: true });
-    view.play(battle.run(), battle.units);
+    view.play(battle.run().timeline);
   }
 
   function mount(el) {

@@ -73,8 +73,8 @@ log();
 {
   const s = duoSave('sword', 5);
   s.seedCounter = 42;
-  const a = JSON.stringify(G.runBattle(s, '1-7', { record: true }).result.log);
-  const b = JSON.stringify(G.runBattle(s, '1-7', { record: true }).result.log);
+  const a = JSON.stringify(G.runBattle(s, '1-7', { record: true }).result.timeline);
+  const b = JSON.stringify(G.runBattle(s, '1-7', { record: true }).result.timeline);
   const s1 = G.newSave('mage', 'x', T0), s2 = G.newSave('mage', 'x', T0);
   s1.gachaSeed = s2.gachaSeed = 77;
   const r1 = JSON.stringify(G.rollRecruit(s1)), r2 = JSON.stringify(G.rollRecruit(s2));

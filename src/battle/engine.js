@@ -6,6 +6,26 @@
  *  - 「回合」= 全局时间每 ticksPerRound 个刻度；速度 100 的单位每回合恰好出手一次
  *  - 有界规则：再动每回合最多 1 次；触发不可递归；每单位每回合行动上限
  *  - 唯一随机来源是 battle.rng（暴击、随机目标、弹射、触发几率）——同种子同阵容完全复现
+ *  - record=true 时记录结构化事件时间线（result.timeline，见下方「事件」说明），文字日志和回放都由它生成；
+ *    记录与否不影响战斗结果（不消耗随机数、不改任何状态）
+ *
+ * 事件（timeline.events，按发生顺序；每次命中单独一条）：
+ *   公共字段  id（递增）、t（战斗时间，刻度）、round、type、parent（触发来源：父事件 id，根事件为 null）
+ *   根事件    battleStart | roundStart | action | battleEnd     —— 一个根事件和它的所有后代 = 回放的「一拍」
+ *   action    actor、skill（技能 key）、skillId、skillName、shape、tags、extra（是否再动）
+ *   hit       actor、target、skill、skillName、dmg（护盾前伤害）、crit、absorbed、hpBefore、hpAfter、shieldBefore、shieldAfter、
+ *             killed、scale（弹射衰减）、redirectedBy?（guard|taunt）、original?（被替挡的目标）
+ *   death     actor（击杀者）、target                    parent = 致死的 hit
+ *   heal      actor、target、amount、hpBefore、hpAfter
+ *   shield    actor、target、amount、shieldBefore、shieldAfter
+ *   buff / debuff  actor、target、stat、value、duration、name
+ *   guard / taunt  actor、target、duration
+ *   push / pull    actor、target、value、barBefore、barAfter
+ *   trigger   actor（天赋 / 特效持有者）、trigger（id）、name、effect（效果种类）     parent = 引发它的事件；它产生的效果事件以它为 parent
+ *   cdReduce  actor、skills（技能名）、value
+ *   extraAction actor
+ *   battleEnd winner、timeout
+ * timeline.snapshots[根事件 id] = 这一拍结束时全体单位的状态（血量、护盾、行动条、CD、buff、守护 / 嘲讽）。
  *
  * 纯逻辑，不碰 DOM；浏览器和 Node 共用。
  */
@@ -36,8 +56,10 @@
       this.round = 0;
       this.over = false;
       this.winner = null;
-      this.log = [];
-      this.current = null; // 正在结算的日志条目（触发链挂在这里）
+      this.events = [];    // 结构化事件（record=true 时）
+      this.snapshots = {}; // 根事件 id → 快照
+      this.evSeq = 0;
+      this.cause = null;   // 当前效果的来源事件 id（新事件默认挂在它下面）
       this.recursionBlocked = 0;
       this.registerTriggers();
     }
@@ -58,7 +80,14 @@
             },
             fn: (ctx) => {
               if (t.chance < 1 && !this.rng.chance(t.chance)) return false;
-              return this.applyTrigger(u, t, ctx);
+              // 先记一条 trigger 事件，效果事件挂在它下面；没生效就撤掉
+              const mark = this.events.length, seq = this.evSeq, prevCause = this.cause;
+              const tid = this.rec({ type: 'trigger', actor: u.uid, trigger: t.id, name: t.name, effect: t.effect.kind, parent: ctx.eventId == null ? this.cause : ctx.eventId });
+              this.cause = tid;
+              const ok = this.applyTrigger(u, t, ctx);
+              this.cause = prevCause;
+              if (!ok && this.record) { this.events.length = mark; this.evSeq = seq; }
+              return ok;
             },
           });
         }
@@ -72,11 +101,22 @@
       return fired;
     }
 
-    chain(owner, trig, text) {
-      const rec = { owner: owner.uid, trigger: trig.name, text };
+    /** 记一条事件（record=false 时什么都不做，返回 null）。parent 默认是当前来源 this.cause。 */
+    rec(ev) {
+      if (!this.record) return null;
+      ev.id = ++this.evSeq;
+      ev.t = this.time;
+      ev.round = this.round;
+      if (ev.parent === undefined) ev.parent = this.cause;
+      this.events.push(ev);
+      return ev.id;
+    }
+    /** 一拍结束：给根事件存快照 */
+    snapAt(rootId) { if (this.record && rootId != null) this.snapshots[rootId] = this.snapshot(); }
+
+    /** 触发计数（文字由事件生成） */
+    chain(owner, trig) {
       owner.stats.triggers[trig.name] = (owner.stats.triggers[trig.name] || 0) + 1;
-      if (this.current) this.current.chain.push(rec);
-      else if (this.record) this.log.push({ type: 'trigger', round: this.round, time: this.time, chain: [rec] });
     }
 
     /** 执行一条触发效果。返回 false 表示没有生效（不计次数）。 */
@@ -95,37 +135,46 @@
             }
           }
           if (!changed.length) return false;
-          this.chain(u, t, `${t.name} → ${changed.join('、')} CD −${e.value}`);
+          this.chain(u, t);
+          this.rec({ type: 'cdReduce', actor: u.uid, skills: changed, value: e.value });
           return true;
         }
         case 'extraAction': {
           if (u.pendingExtra || u.extraThisRound >= C.actionBar.maxExtraActionsPerRound) return false;
           u.pendingExtra = true;
-          this.chain(u, t, `${t.name} → ${u.name} 再动`);
+          this.chain(u, t);
+          this.rec({ type: 'extraAction', actor: u.uid });
           return true;
         }
         case 'healSelf': {
+          const hpBefore = u.hp;
           const amt = this.doHeal(u, u, Math.floor(u.base.maxHp * e.value));
           if (amt <= 0) return false;
-          this.chain(u, t, `${t.name} → ${u.name} 回复 ${amt}`);
+          this.chain(u, t);
+          this.rec({ type: 'heal', actor: u.uid, target: u.uid, amount: amt, hpBefore, hpAfter: u.hp });
           return true;
         }
         case 'shieldSelf': {
           const amt = Math.floor(u.base.maxHp * e.value);
-          this.giveShield(u, u, amt);
-          this.chain(u, t, `${t.name} → ${u.name} 护盾 ${amt}`);
+          this.giveShieldEv(u, u, amt);
+          this.chain(u, t);
           return true;
         }
         case 'buffSelf':
         case 'buffRow': {
           const targets = e.kind === 'buffSelf' ? [u] : DAO.Targeting.rowUnits(this, u.side, u.row);
-          for (const x of targets) this.applyBuff(x, { stat: e.stat, value: e.value, duration: e.duration, source: u.uid, name: t.name });
-          this.chain(u, t, `${t.name} → ${targets.map((x) => x.name).join('、')} ${statLabel(e.stat)} +${fmt(e.value)}`);
+          for (const x of targets) {
+            this.applyBuff(x, { stat: e.stat, value: e.value, duration: e.duration, source: u.uid, name: t.name });
+            this.rec({ type: e.value < 0 ? 'debuff' : 'buff', actor: u.uid, target: x.uid, stat: e.stat, value: e.value, duration: e.duration, name: t.name });
+          }
+          this.chain(u, t);
           return true;
         }
         case 'pushSelf': {
+          const barBefore = u.bar;
           u.bar += e.value;
-          this.chain(u, t, `${t.name} → ${u.name} 推条 +${Math.round(e.value)}`);
+          this.chain(u, t);
+          this.rec({ type: 'push', actor: u.uid, target: u.uid, value: e.value, barBefore, barAfter: u.bar });
           return true;
         }
         default:
@@ -161,6 +210,11 @@
       return actual;
     }
 
+    giveShieldEv(caster, target, amount) {
+      const shieldBefore = target.shield;
+      this.giveShield(caster, target, amount);
+      this.rec({ type: 'shield', actor: caster.uid, target: target.uid, amount, shieldBefore, shieldAfter: target.shield });
+    }
     giveShield(caster, target, amount) {
       if (amount > target.shield) {
         target.shield = amount;
@@ -197,19 +251,17 @@
       this.tickStatuses(u);
 
       const skill = this.chooseSkill(u);
-      const entry = {
-        type: 'action', round: this.round, time: this.time, actor: u.uid,
-        skill: skill.name, skillKey: skill.key, shape: skill.shape, tags: skill.tags,
-        extra: !!isExtra, hits: [], heals: [], effects: [], chain: [],
-      };
-      this.current = entry;
+      const aid = this.rec({ type: 'action', actor: u.uid, skill: skill.key, skillId: skill.id, skillName: skill.name, shape: skill.shape, tags: skill.tags.slice(), extra: !!isExtra, parent: null });
+      this.cause = aid;
+      this.castHits = 0;
+      this.castHeal = 0;
 
       let justUsed = null;
       if (skill.cd > 0) { u.cds[skill.key] = skill.cd; justUsed = skill.key; }
 
       this.castDmg = 0;
-      this.emit(EV.ACT, { actor: u, skill });
-      this.resolve(u, skill, entry);
+      this.emit(EV.ACT, { actor: u, skill, eventId: aid });
+      this.resolve(u, skill);
 
       // 自身其他技能 CD −1
       for (const s of u.skills) if (s.key !== justUsed && u.cds[s.key] > 0) u.cds[s.key]--;
@@ -220,24 +272,21 @@
       ss.casts++;
       ss.dmg += this.castDmg;
       ss.sumSq += this.castDmg * this.castDmg;
-      ss.hits += entry.hits.length;
-      ss.heal += entry.heals.reduce((a, h) => a + h.amount, 0);
+      ss.hits += this.castHits;
+      ss.heal += this.castHeal;
 
-      this.current = null;
-      if (this.record) {
-        entry.snapshot = this.snapshot();
-        this.log.push(entry);
-      }
+      this.cause = null;
+      this.snapAt(aid);
       this.checkEnd();
     }
 
-    resolve(u, skill, entry) {
+    resolve(u, skill) {
       const Tg = DAO.Targeting;
       const primary = [];
       if (skill.dmgType === 'physical' || skill.dmgType === 'magic') {
         if (skill.shape === 'single') {
           const r = Tg.singleEnemyTarget(this, u, skill);
-          if (r.target) { this.hit(u, r.target, skill, 1, entry, r.redirectedBy, r.original); primary.push(r.target); }
+          if (r.target) { this.hit(u, r.target, skill, 1, r.redirectedBy, r.original); primary.push(r.target); }
         } else if (skill.shape === 'bounce') {
           const n = skill.bounces || DAO.CONFIG.bounce.defaultHits;
           const decay = skill.bounceDecay != null ? skill.bounceDecay : DAO.CONFIG.bounce.defaultDecay;
@@ -245,21 +294,20 @@
           for (let i = 0; i < n && !this.over; i++) {
             const r = Tg.bounceTarget(this, u, last);
             if (!r.target) break;
-            this.hit(u, r.target, skill, Math.pow(decay, i), entry, r.redirectedBy, r.original);
+            this.hit(u, r.target, skill, Math.pow(decay, i), r.redirectedBy, r.original);
             primary.push(r.target);
             last = r.target;
           }
         } else {
           for (const t of Tg.shapeTargets(this, u, skill)) {
             if (this.over) break;
-            this.hit(u, t, skill, 1, entry);
+            this.hit(u, t, skill, 1);
             primary.push(t);
           }
         }
       } else if (skill.dmgType === 'heal') {
         for (const t of Tg.healTargets(this, u, skill)) {
-          const amt = this.doHeal(u, t, DAO.Damage.computeHeal(u, skill, 1));
-          entry.heals.push({ target: t.uid, amount: amt });
+          this.healEv(u, t, DAO.Damage.computeHeal(u, skill, 1));
           primary.push(t);
         }
       } else if ((skill.effects || []).some((e) => e.target === 'target')) {
@@ -268,56 +316,60 @@
         if (t) primary.push(t);
       }
       if (this.over) return;
-      for (const e of skill.effects || []) this.applyEffect(u, skill, e, primary, entry);
+      for (const e of skill.effects || []) this.applyEffect(u, skill, e, primary);
     }
 
-    applyEffect(u, skill, e, primary, entry) {
+    healEv(caster, target, amount) {
+      const hpBefore = target.hp;
+      const amt = this.doHeal(caster, target, amount);
+      this.castHeal += amt;
+      this.rec({ type: 'heal', actor: caster.uid, target: target.uid, amount: amt, hpBefore, hpAfter: target.hp });
+      return amt;
+    }
+
+    applyEffect(u, skill, e, primary) {
       const targets = DAO.Targeting.effectTargets(this, u, e, primary);
       if (!targets.length) return;
-      const names = targets.map((t) => t.name).join('、');
       switch (e.kind) {
         case 'buff':
         case 'debuff': {
           const v = e.kind === 'debuff' ? -Math.abs(e.value) : e.value;
-          for (const t of targets) this.applyBuff(t, { stat: e.stat, value: v, duration: e.duration, source: u.uid, name: skill.name });
-          entry.effects.push(`${names} ${statLabel(e.stat)} ${v > 0 ? '+' : ''}${fmt(v)}（${e.duration} 动）`);
-          break;
-        }
-        case 'guard':
-          for (const t of targets) t.status.guard = Math.max(t.status.guard, e.duration);
-          entry.effects.push(`${names} 守护后排（${e.duration} 动）`);
-          break;
-        case 'taunt':
-          for (const t of targets) t.status.taunt = Math.max(t.status.taunt, e.duration);
-          entry.effects.push(`${names} 嘲讽（${e.duration} 动）`);
-          break;
-        case 'shield': {
-          const amt = DAO.Damage.computeShield(u, e.value);
-          for (const t of targets) this.giveShield(u, t, amt);
-          entry.effects.push(`${names} 护盾 ${amt}`);
-          break;
-        }
-        case 'push':
-          for (const t of targets) t.bar += e.value;
-          entry.effects.push(`${names} 推条 +${Math.round(e.value)}`);
-          break;
-        case 'pull':
-          for (const t of targets) t.bar = Math.max(0, t.bar - e.value);
-          entry.effects.push(`${names} 拉条 −${Math.round(e.value)}`);
-          break;
-        case 'heal': {
           for (const t of targets) {
-            const amt = this.doHeal(u, t, Math.floor(u.base.healPower * e.value));
-            entry.heals.push({ target: t.uid, amount: amt });
+            this.applyBuff(t, { stat: e.stat, value: v, duration: e.duration, source: u.uid, name: skill.name });
+            this.rec({ type: e.kind, actor: u.uid, target: t.uid, stat: e.stat, value: v, duration: e.duration, name: skill.name });
           }
           break;
         }
+        case 'guard':
+        case 'taunt':
+          for (const t of targets) {
+            t.status[e.kind] = Math.max(t.status[e.kind], e.duration);
+            this.rec({ type: e.kind, actor: u.uid, target: t.uid, duration: e.duration });
+          }
+          break;
+        case 'shield': {
+          const amt = DAO.Damage.computeShield(u, e.value);
+          for (const t of targets) this.giveShieldEv(u, t, amt);
+          break;
+        }
+        case 'push':
+        case 'pull':
+          for (const t of targets) {
+            const barBefore = t.bar;
+            t.bar = e.kind === 'push' ? t.bar + e.value : Math.max(0, t.bar - e.value);
+            this.rec({ type: e.kind, actor: u.uid, target: t.uid, value: e.value, barBefore, barAfter: t.bar });
+          }
+          break;
+        case 'heal':
+          for (const t of targets) this.healEv(u, t, Math.floor(u.base.healPower * e.value));
+          break;
       }
     }
 
-    hit(attacker, target, skill, scale, entry, redirectedBy, original) {
+    hit(attacker, target, skill, scale, redirectedBy, original) {
       if (!target || !target.alive || this.over) return;
       const r = DAO.Damage.computeDamage(this, attacker, target, skill, scale);
+      const hpBefore = target.hp, shieldBefore = target.shield;
 
       for (const c of r.contrib) {
         const src = this.byUid[c.source];
@@ -346,22 +398,29 @@
       this.castDmg += effective;
 
       const killed = target.hp <= 0;
-      const h = { target: target.uid, dmg, crit: r.crit, absorbed, killed, scale };
-      if (redirectedBy) { h.redirectedBy = redirectedBy; target.stats.redirected++; if (original) h.original = original.uid; }
-      entry.hits.push(h);
+      this.castHits++;
+      if (redirectedBy) target.stats.redirected++;
+      let hid = null;
+      if (this.record) {
+        const ev = { type: 'hit', actor: attacker.uid, target: target.uid, skill: skill.key, skillName: skill.name, dmg, crit: r.crit, absorbed,
+          hpBefore, hpAfter: Math.max(0, target.hp), shieldBefore, shieldAfter: killed ? 0 : target.shield, killed, scale };
+        if (redirectedBy) { ev.redirectedBy = redirectedBy; if (original) ev.original = original.uid; }
+        hid = this.rec(ev);
+      }
 
       if (r.crit) {
         attacker.stats.crits++;
-        this.emit(EV.CRIT, { actor: attacker, target, skill });
+        this.emit(EV.CRIT, { actor: attacker, target, skill, eventId: hid });
       }
-      if (!killed) this.emit(EV.HIT, { actor: attacker, target, skill });
+      if (!killed) this.emit(EV.HIT, { actor: attacker, target, skill, eventId: hid });
       if (killed) {
         target.alive = false;
         target.hp = 0;
         target.shield = 0;
         attacker.stats.kills++;
         attacker.stats.victims.push({ id: target.charId, level: target.level, exp: target.exp });
-        this.emit(EV.KILL, { actor: attacker, target, skill });
+        const did = this.rec({ type: 'death', actor: attacker.uid, target: target.uid, parent: hid });
+        this.emit(EV.KILL, { actor: attacker, target, skill, eventId: did });
         this.checkEnd();
       }
     }
@@ -371,8 +430,11 @@
       this.round = r;
       this.bus.newRound(r);
       for (const u of this.units) { u.actionsThisRound = 0; u.extraThisRound = 0; }
-      if (this.record) this.log.push({ type: 'round', round: r, time: this.time, snapshot: this.snapshot() });
-      this.emit(EV.ROUND_START, { round: r });
+      const rid = this.rec({ type: 'roundStart', parent: null });
+      this.cause = rid;
+      this.emit(EV.ROUND_START, { round: r, eventId: rid });
+      this.cause = null;
+      this.snapAt(rid);
     }
 
     checkEnd() {
@@ -404,10 +466,11 @@
       const EPS = 1e-6;
       this.round = 1;
       this.bus.newRound(1);
-      this.current = { type: 'start', round: 1, time: 0, chain: [] };
-      this.emit(EV.BATTLE_START, {});
-      if (this.record) this.log.push(Object.assign(this.current, { snapshot: this.snapshot() }));
-      this.current = null;
+      const sid = this.rec({ type: 'battleStart', parent: null });
+      this.cause = sid;
+      this.emit(EV.BATTLE_START, { eventId: sid });
+      this.cause = null;
+      this.snapAt(sid);
       this.newRound(1);
 
       let guard = 0;
@@ -447,7 +510,8 @@
         }
       }
 
-      if (this.record) this.log.push({ type: 'end', round: this.round, time: this.time, winner: this.winner, timeout: !!this.timeout, snapshot: this.snapshot() });
+      const eid = this.rec({ type: 'battleEnd', parent: null, winner: this.winner, timeout: !!this.timeout });
+      this.snapAt(eid);
       return this.result();
     }
 
@@ -463,7 +527,25 @@
           uid: u.uid, charId: u.charId, side: u.side, name: u.name, title: u.title, row: u.row, role: u.role, level: u.level,
           alive: u.alive, hp: u.hp, maxHp: u.base.maxHp, stats: u.stats,
         })),
-        log: this.record ? this.log : null,
+        timeline: this.record ? this.timeline() : null,
+      };
+    }
+
+    /** 回放 / 渲染用的时间线：单位的静态信息 + 事件 + 快照。只读，渲染器不应修改它。 */
+    timeline() {
+      return {
+        version: 1,
+        seed: this.seed,
+        winner: this.winner,
+        timeout: !!this.timeout,
+        rounds: Math.min(this.round, DAO.CONFIG.actionBar.maxRounds),
+        units: this.units.map((u) => ({
+          uid: u.uid, charId: u.charId, side: u.side, row: u.row, index: u.index, name: u.name, title: u.title, role: u.role, level: u.level,
+          art: u.art || null, maxHp: u.base.maxHp,
+          skills: u.skills.map((s) => ({ key: s.key, id: s.id, name: s.name, shape: s.shape, cd: s.cd || 0, art: s.art || null })),
+        })),
+        events: this.events,
+        snapshots: this.snapshots,
       };
     }
   }

@@ -25,11 +25,11 @@
 
   // ---------- 普攻（随定位固定） ----------
   DAO.CONFIG.basicSkills = {
-    sword: { id: 'basic_sword', name: '剑击', shape: 'single', range: 'melee', dmgType: 'physical', mult: 1.0, cd: 0, tags: [T.PHYSICAL, T.SWORD] },
-    mage: { id: 'basic_mage', name: '火弹', shape: 'single', range: 'ranged', dmgType: 'magic', mult: 0.9, cd: 0, tags: [T.MAGIC, T.FIRE] },
+    sword: { id: 'basic_sword', art: 'skill.basic.sword', name: '剑击', shape: 'single', range: 'melee', dmgType: 'physical', mult: 1.0, cd: 0, tags: [T.PHYSICAL, T.SWORD] },
+    mage: { id: 'basic_mage', art: 'skill.basic.mage', name: '火弹', shape: 'single', range: 'ranged', dmgType: 'magic', mult: 0.9, cd: 0, tags: [T.MAGIC, T.FIRE] },
     // ---- 敌人（阶段 0）----
-    beast: { id: 'basic_beast', name: '撕咬', shape: 'single', range: 'melee', dmgType: 'physical', mult: 1.0, cd: 0, tags: [T.PHYSICAL] },
-    demon: { id: 'basic_demon', name: '妖火', shape: 'single', range: 'ranged', dmgType: 'magic', mult: 1.0, cd: 0, tags: [T.MAGIC, T.FIRE] },
+    beast: { id: 'basic_beast', art: 'skill.basic.beast', name: '撕咬', shape: 'single', range: 'melee', dmgType: 'physical', mult: 1.0, cd: 0, tags: [T.PHYSICAL] },
+    demon: { id: 'basic_demon', art: 'skill.basic.demon', name: '妖火', shape: 'single', range: 'ranged', dmgType: 'magic', mult: 1.0, cd: 0, tags: [T.MAGIC, T.FIRE] },
   };
 
   // ---------- 固有主动（随定位 / 角色固定，带一次 2选1） ----------
@@ -37,7 +37,7 @@
   DAO.CONFIG.innateSkills = {
     // 后排刺客剑修：越过前排刺后排
     liuying: {
-      id: 'liuying', name: '流影',
+      id: 'liuying', name: '流影', art: 'skill.liuying',
       variants: [
         { name: '流影·刺', shape: 'single', range: 'melee', pierce: true, targetRule: 'backRow', dmgType: 'physical', mult: 2.4, cd: 2, tags: [T.PHYSICAL, T.SWORD] },
         { name: '流影·扫', shape: 'front', range: 'melee', dmgType: 'physical', mult: 1.3, cd: 2, tags: [T.PHYSICAL, T.SWORD] },
@@ -45,7 +45,7 @@
     },
     // 弹射法修
     lianzhuhuo: {
-      id: 'lianzhuhuo', name: '连珠火',
+      id: 'lianzhuhuo', name: '连珠火', art: 'skill.lianzhuhuo',
       variants: [
         { name: '连珠火·散', shape: 'bounce', range: 'ranged', dmgType: 'magic', mult: 1.0, bounces: 4, bounceDecay: 0.75, cd: 2, tags: [T.MAGIC, T.FIRE] },
         { name: '连珠火·落', shape: 'back', range: 'ranged', dmgType: 'magic', mult: 1.2, cd: 2, tags: [T.MAGIC, T.FIRE] },
@@ -53,7 +53,7 @@
     },
     // 单体法修
     chiyan: {
-      id: 'chiyan', name: '赤焰',
+      id: 'chiyan', name: '赤焰', art: 'skill.chiyan',
       variants: [
         { name: '赤焰·凝', shape: 'single', range: 'ranged', dmgType: 'magic', mult: 2.4, cd: 2, tags: [T.MAGIC, T.FIRE] },
         { name: '赤焰·燎', shape: 'back', range: 'ranged', dmgType: 'magic', mult: 1.1, cd: 2, tags: [T.MAGIC, T.FIRE] },
@@ -61,7 +61,7 @@
     },
     // 前排剑修（文档例子：剑气斩 A 单体×2.2，B 前排×1.2）
     jianqizhan: {
-      id: 'jianqizhan', name: '剑气斩',
+      id: 'jianqizhan', name: '剑气斩', art: 'skill.jianqizhan',
       variants: [
         { name: '剑气斩·单', shape: 'single', range: 'melee', dmgType: 'physical', mult: 2.2, cd: 2, tags: [T.PHYSICAL, T.SWORD] },
         { name: '剑气斩·横', shape: 'front', range: 'melee', dmgType: 'physical', mult: 1.2, cd: 2, tags: [T.PHYSICAL, T.SWORD] },
@@ -69,7 +69,7 @@
     },
     // 名将（剑修）
     pojun: {
-      id: 'pojun', name: '破军',
+      id: 'pojun', name: '破军', art: 'skill.pojun',
       variants: [
         { name: '破军·斩', shape: 'single', range: 'melee', dmgType: 'physical', mult: 2.6, cd: 2, tags: [T.PHYSICAL] },
         { name: '破军·扫', shape: 'all', range: 'melee', dmgType: 'physical', mult: 1.0, cd: 2, tags: [T.PHYSICAL] },
@@ -77,20 +77,20 @@
     },
 
     // ---- 敌人（阶段 0，只有一个变体）----
-    pounce: { id: 'pounce', name: '扑击', variants: [
+    pounce: { id: 'pounce', name: '扑击', art: 'skill.pounce', variants: [
       { name: '扑击', shape: 'single', range: 'melee', dmgType: 'physical', mult: 1.6, cd: 2, tags: [T.PHYSICAL] }] },
-    gore: { id: 'gore', name: '冲撞', variants: [
+    gore: { id: 'gore', name: '冲撞', art: 'skill.gore', variants: [
       { name: '冲撞', shape: 'single', range: 'melee', dmgType: 'physical', mult: 1.4, cd: 2, tags: [T.PHYSICAL],
         effects: [{ kind: 'pull', target: 'hitTargets', value: 250 }] }] },
-    foxfire: { id: 'foxfire', name: '狐火', variants: [
+    foxfire: { id: 'foxfire', name: '狐火', art: 'skill.foxfire', variants: [
       { name: '狐火', shape: 'single', range: 'ranged', dmgType: 'magic', mult: 1.7, cd: 2, tags: [T.MAGIC, T.FIRE] }] },
-    yaofengzhen: { id: 'yaofengzhen', name: '妖风阵', variants: [
+    yaofengzhen: { id: 'yaofengzhen', name: '妖风阵', art: 'skill.yaofengzhen', variants: [
       { name: '妖风阵', shape: 'single', range: 'ranged', dmgType: 'none', cd: 1, tags: [],
         effects: [
           { kind: 'buff', target: 'otherAllies', stat: 'armor', value: 60, duration: 2 },
           { kind: 'buff', target: 'otherAllies', stat: 'resist', value: 60, duration: 2 },
         ] }] }, // 狐王活着就一直给其他妖兽加护甲 / 法抗（不加自己）：先打掉它，前排才好打
-    shanxiao: { id: 'shanxiao', name: '裂山', variants: [
+    shanxiao: { id: 'shanxiao', name: '裂山', art: 'skill.shanxiao', variants: [
       { name: '裂山', shape: 'front', range: 'melee', dmgType: 'physical', mult: 2.0, cd: 3, tags: [T.PHYSICAL],
         effects: [{ kind: 'buff', target: 'self', stat: 'armor', value: 15, duration: 2 }] }] },
   };
@@ -100,39 +100,39 @@
   // 橙卡另带一条固定特效（trigger），结构同触发型天赋。
   DAO.CONFIG.cards = {
     // ===== 主动卡 =====
-    chuanyun: { id: 'chuanyun', name: '穿云剑', slot: 'active', quality: 'yellow', roles: ['sword'],
+    chuanyun: { id: 'chuanyun', name: '穿云剑', art: 'card.chuanyun', slot: 'active', quality: 'yellow', roles: ['sword'],
       roll: { key: 'mult', min: 1.3, max: 2.0 },
       skill: { shape: 'single', range: 'melee', pierce: true, targetRule: 'backRow', dmgType: 'physical', mult: 1.6, cd: 2, tags: [T.PHYSICAL, T.SWORD] } }, // 穿透、优先打后排
-    jianqi: { id: 'jianqi', name: '剑气横扫', slot: 'active', quality: 'blue', roles: ['sword'],
+    jianqi: { id: 'jianqi', name: '剑气横扫', art: 'card.jianqi', slot: 'active', quality: 'blue', roles: ['sword'],
       roll: { key: 'mult', min: 0.9, max: 1.4 },
       skill: { shape: 'front', range: 'melee', dmgType: 'physical', mult: 1.1, cd: 2, tags: [T.PHYSICAL, T.SWORD] } },
-    lieyan: { id: 'lieyan', name: '烈焰', slot: 'active', quality: 'blue', roles: ['mage'],
+    lieyan: { id: 'lieyan', name: '烈焰', art: 'card.lieyan', slot: 'active', quality: 'blue', roles: ['mage'],
       roll: { key: 'mult', min: 0.6, max: 0.9 },
       skill: { shape: 'all', range: 'ranged', dmgType: 'magic', mult: 0.75, cd: 2, tags: [T.MAGIC, T.FIRE] } },
-    huoyu: { id: 'huoyu', name: '火雨', slot: 'active', quality: 'yellow', roles: ['mage'],
+    huoyu: { id: 'huoyu', name: '火雨', art: 'card.huoyu', slot: 'active', quality: 'yellow', roles: ['mage'],
       roll: { key: 'mult', min: 1.3, max: 1.9 },
       skill: { shape: 'back', range: 'ranged', dmgType: 'magic', mult: 1.6, cd: 2, tags: [T.MAGIC, T.FIRE] } },
-    liuhuo: { id: 'liuhuo', name: '流火弹', slot: 'active', quality: 'yellow', roles: ['mage'],
+    liuhuo: { id: 'liuhuo', name: '流火弹', art: 'card.liuhuo', slot: 'active', quality: 'yellow', roles: ['mage'],
       roll: { key: 'mult', min: 0.8, max: 1.2 },
       skill: { shape: 'bounce', range: 'ranged', dmgType: 'magic', mult: 1.0, bounces: 3, bounceDecay: 0.75, cd: 1, tags: [T.MAGIC, T.FIRE] } },
-    zhenshe: { id: 'zhenshe', name: '震慑', slot: 'active', quality: 'blue', roles: ['sword'],
+    zhenshe: { id: 'zhenshe', name: '震慑', art: 'card.zhenshe', slot: 'active', quality: 'blue', roles: ['sword'],
       roll: { key: 'mult', min: 1.0, max: 1.5 },
       skill: { shape: 'single', range: 'melee', dmgType: 'physical', mult: 1.2, cd: 2, tags: [T.PHYSICAL],
         effects: [{ kind: 'pull', target: 'hitTargets', value: 300 }] } },
 
     // ===== 被动卡 =====
-    ruifeng: { id: 'ruifeng', name: '锐锋', slot: 'passive', quality: 'blue', roles: ['sword'],
+    ruifeng: { id: 'ruifeng', name: '锐锋', art: 'card.ruifeng', slot: 'passive', quality: 'blue', roles: ['sword'],
       roll: { key: 'value', min: 0.08, max: 0.15 }, passive: { tagDmgUp: { tags: [T.SWORD], value: 0.12 } } },
-    fenxin: { id: 'fenxin', name: '焚心', slot: 'passive', quality: 'blue', roles: ['mage'],
+    fenxin: { id: 'fenxin', name: '焚心', art: 'card.fenxin', slot: 'passive', quality: 'blue', roles: ['mage'],
       roll: { key: 'value', min: 0.08, max: 0.15 }, passive: { tagDmgUp: { tags: [T.FIRE], value: 0.12 } } },
-    jingang: { id: 'jingang', name: '金刚', slot: 'passive', quality: 'blue', roles: ['sword'],
+    jingang: { id: 'jingang', name: '金刚', art: 'card.jingang', slot: 'passive', quality: 'blue', roles: ['sword'],
       roll: { key: 'value', min: 20, max: 40 }, passive: { stat: 'armor', value: 30 } },
-    ningshen: { id: 'ningshen', name: '凝神', slot: 'passive', quality: 'yellow', roles: ['sword', 'mage'],
+    ningshen: { id: 'ningshen', name: '凝神', art: 'card.ningshen', slot: 'passive', quality: 'yellow', roles: ['sword', 'mage'],
       roll: { key: 'value', min: 0.05, max: 0.12 }, passive: { stat: 'critRate', value: 0.08 } },
-    xunjie: { id: 'xunjie', name: '迅捷', slot: 'passive', quality: 'blue', roles: ['sword', 'mage'],
+    xunjie: { id: 'xunjie', name: '迅捷', art: 'card.xunjie', slot: 'passive', quality: 'blue', roles: ['sword', 'mage'],
       roll: { key: 'value', min: 8, max: 16 }, passive: { stat: 'speed', value: 12 } },
     // 橙卡：主数值 + 固定触发特效
-    wanjian: { id: 'wanjian', name: '万剑归宗', slot: 'passive', quality: 'orange', roles: ['sword'],
+    wanjian: { id: 'wanjian', name: '万剑归宗', art: 'card.wanjian', slot: 'passive', quality: 'orange', roles: ['sword'],
       roll: { key: 'value', min: 0.03, max: 0.08 }, passive: { stat: 'finalDmg', value: 0.05 },
       trigger: { id: 'wanjian_trig', name: '万剑归宗·归', desc: '暴击时剑系技能 CD −1，每回合 1 次', event: 'crit', chance: 1, maxPerRound: 1,
         effect: { kind: 'cdReduce', tags: [T.SWORD], value: 1 } } },

@@ -19,6 +19,7 @@
 
   DAO.CONFIG.characters = {
     liuwuying: {
+      art: 'unit.liuwuying',
       name: '柳无影', title: '后排刺客剑修', role: 'sword', row: 'back',
       stats: { str: 95, agi: 120, int: 30 },
       innate: 'liuying', branch: 0,
@@ -27,6 +28,7 @@
       talents: [{ id: 'min', roll: 0.6 }, { id: 'jianxin', roll: 0.5 }, { id: 'jianxintongming', roll: 1 }],
     },
     sujin: {
+      art: 'unit.sujin',
       name: '苏烬', title: '弹射法修', role: 'mage', row: 'back',
       stats: { str: 30, agi: 85, int: 125 },
       innate: 'lianzhuhuo', branch: 0,
@@ -35,6 +37,7 @@
       talents: [{ id: 'huoling', roll: 0.5 }, { id: 'guangsan', roll: 0.5 }],
     },
     huoxiao: {
+      art: 'unit.huoxiao',
       name: '霍骁', title: '名将·破军', role: 'sword', row: 'front',
       stats: { str: 130, agi: 90, int: 40 },
       innate: 'pojun', branch: 0,
@@ -43,6 +46,7 @@
       talents: [{ id: 'li', roll: 0.7 }, { id: 'ganglie', roll: 0.6 }, { id: 'pojunzhiwei', roll: 1 }],
     },
     hantieyi: {
+      art: 'unit.hantieyi',
       name: '韩铁衣', title: '前排剑修', role: 'sword', row: 'front',
       stats: { str: 115, agi: 90, int: 30 },
       innate: 'jianqizhan', branch: 0,
@@ -51,6 +55,7 @@
       talents: [{ id: 'jianxintongming', roll: 1 }, { id: 'jianxin', roll: 0.5 }],
     },
     chixiazi: {
+      art: 'unit.chixiazi',
       name: '赤霞子', title: '单体法修', role: 'mage', row: 'back',
       stats: { str: 30, agi: 85, int: 125 },
       innate: 'chiyan', branch: 0,
@@ -59,6 +64,7 @@
       talents: [{ id: 'huoling', roll: 0.5 }, { id: 'zhuanzhu', roll: 0.5 }],
     },
     yueling: {
+      art: 'unit.yueling',
       name: '岳凌', title: '护体剑修', role: 'sword', row: 'front',
       stats: { str: 120, agi: 60, int: 50 },
       innate: 'jianqizhan', branch: 1,
@@ -67,6 +73,7 @@
       talents: [{ id: 'tiepi', roll: 0.6 }, { id: 'hutigangqi', roll: 0.5 }],
     },
     qinshuang: {
+      art: 'unit.qinshuang',
       name: '秦霜', title: '快剑剑修', role: 'sword', row: 'front',
       stats: { str: 100, agi: 115, int: 30 },
       innate: 'jianqizhan', branch: 0,
@@ -75,6 +82,7 @@
       talents: [{ id: 'min', roll: 0.5 }, { id: 'xinyan', roll: 0.5 }],
     },
     shenqingya: {
+      art: 'unit.shenqingya',
       name: '沈青崖', title: '横扫剑修', role: 'sword', row: 'back',
       stats: { str: 110, agi: 95, int: 30 },
       innate: 'liuying', branch: 1,
@@ -83,6 +91,7 @@
       talents: [{ id: 'li', roll: 0.5 }, { id: 'ganglie', roll: 0.5 }],
     },
     wenruyu: {
+      art: 'unit.wenruyu',
       name: '温如玉', title: '群攻法修', role: 'mage', row: 'back',
       stats: { str: 30, agi: 90, int: 120 },
       innate: 'chiyan', branch: 1,
@@ -91,6 +100,7 @@
       talents: [{ id: 'zhi', roll: 0.5 }, { id: 'xuanwei', roll: 0.5 }],
     },
     lufen: {
+      art: 'unit.lufen',
       name: '陆焚', title: '燎原法修', role: 'mage', row: 'back',
       stats: { str: 30, agi: 85, int: 125 },
       innate: 'lianzhuhuo', branch: 1,

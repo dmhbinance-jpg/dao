@@ -46,7 +46,9 @@
   function persist() { if (save) store.set('save', save); }
 
   // ================= 小工具 =================
-  const roleGlyph = (role) => h('span', { class: 'role-glyph role-' + role }, role === 'sword' ? '剑' : '法');
+  /** 角色头像位：资源清单里有图就用图，没有（目前都是占位）退回定位色块 */
+  const charArt = (c) => c.art || (DAO.CONFIG.game.starters[c.role] || {}).art;
+  const charGlyph = (c) => UI.artBox(charArt(c), { use: 'portrait', text: c.role === 'sword' ? '剑' : '法', cls: 'role-glyph role-' + c.role, title: c.name });
   const STAT_NAME = { str: '力', agi: '敏', int: '智' };
   const STATUS_NAME = { lineup: '上阵', idle: '闲置', research: '研究中', gather: '采集中', new: '新人' };
   const fmtTime = (ms) => { const s = Math.max(0, Math.ceil(ms / 1000)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
@@ -160,7 +162,7 @@
         goBtn.disabled = false;
         goBtn.textContent = `以${st.title}入道`;
       } },
-        h('div', { class: 'role-head' }, roleGlyph(role), h('div', null, h('h3', null, st.title), h('p', null, st.desc))),
+        h('div', { class: 'role-head' }, charGlyph({ role, name: st.title, art: st.art }), h('div', null, h('h3', null, st.title), h('p', null, st.desc))),
         h('div', { class: 'role-section' }, h('h4', null, '一级属性'),
           h('div', { class: 'triad-grid' }, ['str', 'agi', 'int'].map((k) => h('div', null,
             h('span', null, STAT_NAME[k]), h('b', null, Math.round(u.base[k])), h('small', null, `+${st.growth[k]}/级`))))),
@@ -411,7 +413,7 @@
         const blk = G.researchBlock(save, c.id);
         const why = { gold: '金币不够', lastFighter: '唯一上阵的角色', busy: '研究中' }[blk];
         list.appendChild(h('div', { class: 'researcher' },
-          roleGlyph(c.role),
+          charGlyph(c),
           h('span', { class: 'r-name' }, c.name, h('small', null, ` Lv${c.level} · ${STATUS_NAME[G.status(save, c.id)]}`)),
           h('span', { class: 'muted' }, `约 ${fmtTime(G.researchDurationMs(save, c.id))}`),
           h('button', { class: 'mini' + (blk ? '' : ' primary'), disabled: !!blk, title: why || '', onclick: () => doResearch(c.id) }, why || '派去研究')));
@@ -443,7 +445,7 @@
         btn = h('button', { class: 'mini' + (blk ? '' : stt === 'idle' ? ' primary' : ''), disabled: !!blk, title: why || (stt === 'lineup' ? '会从上阵里撤下来' : ''), onclick: () => doGather(c.id) }, why || (stt === 'lineup' ? '下阵去采集' : '派去采集'));
       }
       list.appendChild(h('div', { class: 'researcher' + (stt === 'gather' ? ' on' : '') },
-        roleGlyph(c.role),
+        charGlyph(c),
         h('span', { class: 'r-name' }, c.name, h('small', null, ` Lv${c.level} · ${STATUS_NAME[stt]}`)),
         h('span', { class: 'muted' }, `${G.gatherRate(c).toFixed(2)}/秒 · 系数 ${G.gatherFactor(c).toFixed(2)}`),
         btn));
@@ -527,7 +529,7 @@
     const stt = save.roster.includes(c) ? G.status(save, c.id) : 'new';
     const need = G.expToNext(c.level);
     const card = h('div', { class: 'char-card st-' + stt },
-      h('div', { class: 'cc-head' }, roleGlyph(c.role),
+      h('div', { class: 'cc-head' }, charGlyph(c),
         h('div', { class: 'cc-name' }, h('b', null, c.name), h('small', null, `${DAO.ROLE_NAMES[c.role]} · `, qualityBadge(c.quality))),
         h('div', { class: 'lv' }, h('small', null, '等级'), h('b', null, c.level))),
       h('div', { class: 'expbar' }, h('div', { class: 'exp-fill', style: { width: (100 * c.exp / need) + '%' } }), h('span', null, `经验 ${c.exp} / ${need}`)),
@@ -550,7 +552,7 @@
       save.roster.includes(c) && Object.keys(save.bag).some((id) => G.canUseCard(c, id)) ? h('button', { class: 'mini', onclick: () => { tab = 'bag'; render(); } }, '去背包插卡') : null);
     const sk = DAO.Model.cardSkill(c.card);
     return h('div', { class: 'card-slot' },
-      h('div', { class: 'cs-top' }, h('span', { class: 'cs-label' }, '主动卡槽'), cardQuality(c.card.id), h('b', null, cardName(c.card.id)),
+      h('div', { class: 'cs-top' }, UI.artBox(DAO.CONFIG.cards[c.card.id].art, { use: 'icon', text: '主动卡槽', cls: 'cs-label card-icon', title: cardName(c.card.id) }), cardQuality(c.card.id), h('b', null, cardName(c.card.id)),
         h('span', { class: 'cs-val' }, `${cardVal(c.card.id, c.card.roll)} · ${tierOf(c.card.roll)}`)),
       h('div', { class: 'skill-row' }, h('span', null, skillDesc(sk)), tagChips(sk.tags, hl)));
   }
@@ -561,7 +563,7 @@
     return h('div', { class: 'gear-slots' }, DAO.CONFIG.game.forge.slots.map((slot) => {
       const it = c.equip[slot];
       return h('div', { class: 'gear-slot' + (it ? '' : ' empty') },
-        h('span', { class: 'cs-label' }, SLOT_NAME()[slot]),
+        UI.artBox(G.recipe(slot).art, { use: 'icon', text: SLOT_NAME()[slot], cls: 'cs-label gear-icon', title: SLOT_NAME()[slot] }),
         it ? h('span', { class: 'gs-main' }, gearLine(it), h('small', null, gearStatText(G.gearStats(it)))) : h('span', { class: 'muted' }, '空'),
         mine ? h('span', { class: 'gs-btns' },
           h('button', { class: 'mini', onclick: () => openSlotChooser(c, slot) }, it ? '换' : '穿戴'),
@@ -599,7 +601,7 @@
     for (const row of ['back', 'front']) {
       const col = h('div', { class: 'fm-col fm-' + row }, h('div', { class: 'fm-label' }, row === 'front' ? '前排（挨近战）' : '后排（只挨远程）'));
       for (const { entry, char } of G.lineupChars(save).filter((x) => x.entry.row === row)) {
-        col.appendChild(h('div', { class: 'fm-unit' }, roleGlyph(char.role), h('span', null, char.name, h('small', null, ` Lv${char.level}`)),
+        col.appendChild(h('div', { class: 'fm-unit' }, charGlyph(char), h('span', null, char.name, h('small', null, ` Lv${char.level}`)),
           h('button', { class: 'mini', onclick: () => { G.setRow(save, char.id, row === 'front' ? 'back' : 'front'); changed(); } }, row === 'front' ? '→ 后排' : '→ 前排')));
       }
       if (!col.querySelector('.fm-unit')) col.appendChild(h('div', { class: 'fm-empty muted' }, '空'));
@@ -659,7 +661,7 @@
         const hl = talentTagsOf(c);
         const match = sk.tags.some((t) => hl.has(t));
         const label = pv.mode === 'new' ? '插入' : pv.mode === 'reroll' ? `重掷（现 ${tierOf(c.card.roll)}）` : `换卡（销毁 ${cardName(c.card.id)}）`;
-        item.appendChild(h('div', { class: 'bi-user' }, roleGlyph(c.role),
+        item.appendChild(h('div', { class: 'bi-user' }, charGlyph(c),
           h('span', null, c.name, h('small', null, ` Lv${c.level}${match ? ' · 标签匹配' : ''}`)),
           h('button', { class: 'mini' + (pv.mode === 'replace' ? ' ghost' : ' primary'), onclick: () => openInsert(c.id, id) }, label)));
       }
@@ -1002,7 +1004,7 @@
     lastSettle = null;
     activity = { type: 'push', stageId };
     render();
-    view.play(o.result, o.units);
+    view.play(o.result.timeline);
   }
   function settlePending() {
     if (!pending) return null;
