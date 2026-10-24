@@ -13,6 +13,7 @@
       document.querySelectorAll('.page').forEach((p) => (p.hidden = p.id !== 'page-' + name));
       UI.store.set('tab', name);
       if (name !== 'player') UI.Player.stop();
+      else if (!UI.Player.hasResult()) UI.Player.start();
     };
     tabs.forEach((t) => t.addEventListener('click', () => show(t.dataset.tab)));
 
@@ -20,7 +21,8 @@
     UI.Player.mount(document.getElementById('page-player'));
     UI.Batch.mount(document.getElementById('page-batch'));
     UI.ConfigView.mount(document.getElementById('page-config'));
-    show(UI.store.get('tab', 'editor'));
+    const first = UI.store.get('tab', 'player');
+    show(first);
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);

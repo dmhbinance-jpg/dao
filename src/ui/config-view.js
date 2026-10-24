@@ -29,10 +29,10 @@
     msg = h('span', { class: 'status' }, UI.configOverridden ? '当前使用本机保存的配置' : '当前为代码里的默认配置');
     rootEl.appendChild(h('div', { class: 'toolbar' },
       h('button', { class: 'primary', onclick: apply }, '应用并保存'),
-      h('button', { onclick: exportFile }, '导出 JSON'),
+      h('button', { onclick: copyJson }, '复制 JSON'),
       h('button', { onclick: reset }, '恢复默认'),
       msg));
-    rootEl.appendChild(h('p', { class: 'muted' }, '所有数值（系数、技能、技能卡、天赋、角色、默认阵容）都在这一张表里。改完点应用，阵容编辑和模拟立即使用新值。要永久改动，把导出的内容合并回 src/config/*.js。'));
+    rootEl.appendChild(h('p', { class: 'muted' }, '所有数值（系数、技能、技能卡、天赋、角色、默认阵容）都在这一张表里。改完点应用，阵容编辑和模拟立即使用新值。要永久改动，把复制出的内容合并回 src/config/*.js。'));
     rootEl.appendChild(ta);
   }
 
@@ -58,12 +58,12 @@
     UI.changed();
   }
 
-  function exportFile() {
-    const blob = new Blob([JSON.stringify(DAO.CONFIG, null, 2)], { type: 'application/json' });
-    const a = h('a', { href: URL.createObjectURL(blob), download: 'dao-config.json' });
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
+  function copyJson() {
+    const text = JSON.stringify(DAO.CONFIG, null, 2);
+    const fallback = () => { ta.focus(); ta.select(); msg.textContent = '已全选，按 Ctrl/⌘+C 复制'; };
+    try {
+      navigator.clipboard.writeText(text).then(() => { msg.textContent = '已复制到剪贴板 ✓'; }, fallback);
+    } catch (e) { fallback(); }
   }
 
   UI.ConfigView = {

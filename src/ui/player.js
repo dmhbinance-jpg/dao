@@ -206,5 +206,6 @@
     mount(el) { rootEl = el; build(); },
     start,
     stop,
+    hasResult: () => !!result,
   };
 })(typeof globalThis !== 'undefined' ? globalThis : this);
