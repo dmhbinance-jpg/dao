@@ -92,7 +92,7 @@
 
     const pct = { strPct: 0, agiPct: 0, intPct: 0, hpPct: 0, armorPct: 0, resistPct: 0 };
     const flat = { critRate: 0, critDmg: 0, speed: 0, armor: 0, resist: 0 };
-    const mods = { dmgUp: 0, finalDmg: 0, healUp: 0, tagDmg: [] };
+    const mods = { dmgUp: ch.dmgUp || 0, finalDmg: 0, healUp: 0, tagDmg: [] }; // ch.dmgUp：敌人模板的伤害修正（进增伤区）
     const triggers = [];
     const talentInfo = [];
 

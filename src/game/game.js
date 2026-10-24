@@ -1,9 +1,9 @@
 /**
- * 游戏主线规则（阶段 0 + 阶段 1）：角色与上阵、引导关、经验金币、洞府招募、研究上阵位、引导、自动推关、存档迁移。
+ * 游戏主线规则（阶段 0–2）：角色与上阵、引导关、经验金币、洞府招募、研究上阵位、技能卡（背包 / 插卡 / 掉落）、引导、自动推关、存档迁移。
  * 纯逻辑，不碰 DOM；浏览器和 Node 共用。所有随机走 DAO.RNG（战斗用 battle.rng，招募用存档里的招募种子）。
  * 涉及时间的函数都显式接收 now（毫秒时间戳），命令行模拟传模拟时钟。
  *
- * 存档 v2：
+ * 存档 v3（v2 基础上加：bag、rollSeed、settings、cardsInfo、bagNew，角色加 card）：
  *   { v, createdAt, seedCounter, gachaSeed, gold, nextId,
  *     roster: [角色], lineup: [{ id, row }],
  *     research: { slots, active: { level, charId, startedAt, endsAt } | null },
@@ -13,7 +13,9 @@
  *     auto: { on, confirmed: {}, lastAttempt: { stageId, sig } | null },
  *     idle: { stageId } | null,
  *     stats: { battles, wins, kills, expTotal, goldTotal, playMs, pushMs, idleMs } }
- *   角色：{ id, name, role, quality, origin, level, exp, base, growth, innate, branch, talents }
+ *     bag: { [cardId]: 张数 }, rollSeed, settings: { cardPrompts }, bagNew,
+ *     cardsInfo: { firstGot, rerolls, replaces, swapOffers, inserts } }
+ *   角色：{ id, name, role, quality, origin, level, exp, base, growth, innate, branch, talents, card: { id, roll } | null }
  */
 (function (root) {
   'use strict';
@@ -37,6 +39,7 @@
       level: cfg().startLevel, exp: 0,
       base: clone(st.base), growth: clone(st.growth),
       innate: st.innate, branch: st.branch, talents: clone(st.talents),
+      card: null,
     };
   }
 
@@ -64,6 +67,11 @@
       auto: { on: cfg().auto.defaultOn, confirmed: {}, lastAttempt: null },
       idle: null,
       stats: emptyStats(),
+      bag: {},
+      rollSeed: 1,
+      settings: clone(cfg().settings),
+      bagNew: false,
+      cardsInfo: { firstGot: false, rerolls: 0, replaces: 0, swapOffers: 0, inserts: 0 },
     };
   }
 
@@ -74,24 +82,49 @@
   function migrate(s, now) {
     if (!s || typeof s !== 'object') return null;
     if (s.v === cfg().saveVersion) return isValidV2(s) ? s : null;
-    if (s.v === 1 && s.hero && cfg().starters[s.hero.role]) {
-      const h = s.hero;
-      const out = newSave(h.role, h.name, s.createdAt || now);
-      const c = out.roster[0];
-      c.level = h.level || 1;
-      c.exp = h.exp || 0;
-      c.base = clone(h.base || c.base);
-      c.growth = clone(h.growth || c.growth);
-      c.talents = clone(h.talents || c.talents);
-      out.seedCounter = s.seedCounter || 1;
-      out.gold = cfg().migration.v1StartGold;
-      out.progress.cleared = Object.assign({}, (s.progress && s.progress.cleared) || {});
-      out.stats = Object.assign(emptyStats(), s.stats || {});
-      // 阶段 0 的 1-4 和现在的 1-4 不同，但打过就算打过：直接开放洞府
-      if (out.progress.cleared[cfg().recruit.unlockStage]) unlockCave(out);
-      return out;
-    }
+    if (s.v === 2) return isValidV2(s) ? migrateV2(s) : null;
+    if (s.v === 1 && s.hero && cfg().starters[s.hero.role]) return migrateV2(migrateV1(s, now));
     return null;
+  }
+
+  /** v1（阶段 0）→ v2：单个 hero → 角色 c1；打过开放关的直接开放洞府 */
+  function migrateV1(s, now) {
+    const h = s.hero;
+    const out = newSave(h.role, h.name, s.createdAt || now);
+    out.v = 2;
+    const c = out.roster[0];
+    c.level = h.level || 1;
+    c.exp = h.exp || 0;
+    c.base = clone(h.base || c.base);
+    c.growth = clone(h.growth || c.growth);
+    c.talents = clone(h.talents || c.talents);
+    out.seedCounter = s.seedCounter || 1;
+    out.gold = cfg().migration.v1StartGold;
+    out.progress.cleared = Object.assign({}, (s.progress && s.progress.cleared) || {});
+    out.stats = Object.assign(emptyStats(), s.stats || {});
+    if (out.progress.cleared[cfg().recruit.unlockStage]) unlockCave(out);
+    return out;
+  }
+
+  /** v2（阶段 1）→ v3：加背包与卡槽；开局天赋换成同门标签型；打过第一段首领的补发第一张卡 */
+  function migrateV2(s) {
+    s.v = cfg().saveVersion;
+    s.bag = s.bag || {};
+    s.rollSeed = s.rollSeed || 1;
+    s.settings = Object.assign(clone(cfg().settings), s.settings || {});
+    s.bagNew = false;
+    s.cardsInfo = Object.assign({ firstGot: false, rerolls: 0, replaces: 0, swapOffers: 0, inserts: 0 }, s.cardsInfo || {});
+    const swapTalent = { li: 'jianxin', zhi: 'huoling' };
+    for (const c of s.roster) {
+      if (c.card === undefined) c.card = null;
+      if (c.origin === 'starter') c.talents = c.talents.map((t) => (swapTalent[t.id] && cfg().starters[c.role].talents.some((x) => x.id === swapTalent[t.id]) ? { id: swapTalent[t.id], roll: t.roll } : t));
+    }
+    // 引导 id：v2 的 chapterDone = 第一段通关
+    const ren = (id) => (id === 'chapterDone' ? 'done:' + cfg().chapters[0].id : id);
+    s.guide.queue = s.guide.queue.map(ren);
+    if (s.guide.seen.chapterDone) { s.guide.seen[ren('chapterDone')] = true; delete s.guide.seen.chapterDone; }
+    if (isCleared(s, cfg().cards.firstCardStage)) grantFirstCard(s);
+    return s;
   }
 
   function isValidV2(s) {
@@ -114,7 +147,7 @@
       id: c.id, name: c.name, title: DAO.ROLE_NAMES[c.role], role: c.role, row: row || 'front',
       level: c.level, base: c.base, growth: c.growth,
       innate: c.innate, branch: c.branch, talents: c.talents,
-      activeCard: null, passiveCard: null,
+      activeCard: c.card ? { id: c.card.id, roll: c.card.roll } : null, passiveCard: null,
     };
   }
   function charUnit(c, level) {
@@ -225,7 +258,10 @@
   function showFormation(save) { return save.lineup.length >= 2; }
 
   // ================= 关卡 =================
-  function stages() { return cfg().stages; }
+  function chapters() { return cfg().chapters; }
+  function stages() { return cfg().chapters.reduce((a, ch) => a.concat(ch.stages), []); }
+  function chapterOf(stageId) { return cfg().chapters.find((ch) => ch.stages.some((s) => s.id === stageId)) || null; }
+  function chapterDone(save, chId) { const ch = cfg().chapters.find((c) => c.id === chId); return !!ch && ch.stages.every((s) => isCleared(save, s.id)); }
   function stageById(id) { return stages().find((s) => s.id === id); }
   function stageIndex(id) { return stages().findIndex((s) => s.id === id); }
   function isCleared(save, id) { return (save.progress.cleared[id] || 0) > 0; }
@@ -234,6 +270,7 @@
     return i === 0 || (i > 0 && isCleared(save, stages()[i - 1].id));
   }
   function nextStage(save) { return stages().find((s) => !isCleared(save, s.id)) || null; }
+  /** 当前开放的全部章节都已通关 */
   function chapterCleared(save) { return stages().every((s) => isCleared(save, s.id)); }
   function bestClearedStage(save) {
     const c = stages().filter((s) => isCleared(save, s.id));
@@ -269,6 +306,7 @@
     const keep = win || cfg().exp.lossKeepsKills;
     return {
       stageId, seed, result, units: battle.units, win,
+      drops: keep ? rollDrops(save, stageId, seed, victims) : [],
       kills: victims.length,
       exp: keep ? victims.reduce((a, v) => a + killExp(v.id, v.level), 0) : 0,
       gold: keep ? victims.reduce((a, v) => a + killGold(v.id, v.level), 0) : 0,
@@ -313,7 +351,10 @@
       if (!wasCleared) {
         const nx = stages()[stageIndex(o.stageId) + 1];
         unlocked = nx ? nx.id : null;
-        if (!nx) queueGuide(save, 'chapterDone');
+        const ch = chapterOf(o.stageId);
+        if (ch && ch.stages[ch.stages.length - 1].id === o.stageId) queueGuide(save, 'done:' + ch.id);
+        if (o.stageId === cfg().cards.firstCardStage) grantFirstCard(save);
+        if (o.stageId === cfg().recruit.extraGuideStage) queueGuide(save, 'extraRecruit');
       }
     } else {
       save.progress.lost[o.stageId] = (save.progress.lost[o.stageId] || 0) + 1;
@@ -323,7 +364,8 @@
       unlockCave(save);
       caveUnlocked = true;
     }
-    return { levelUps, expEach: each, gold: o.gold, firstClear: o.win && !wasCleared, unlocked, caveUnlocked };
+    const drops = addDrops(save, o.drops || []);
+    return { levelUps, expEach: each, gold: o.gold, firstClear: o.win && !wasCleared, unlocked, caveUnlocked, drops };
   }
 
   /** 战斗播放时长（毫秒）。按行动数估算，与播放器节奏一致。 */
@@ -390,11 +432,21 @@
     const used = new Set(save.roster.map((c) => c.name));
     const freeNames = R.names.filter((n) => !used.has(n));
     const name = freeNames.length ? rng.pick(freeNames) : rng.pick(R.names) + (save.nextId);
+    const innates = R.innatePool[role].filter((id) => !(opts.excludeInnates || []).includes(id));
+    const innate = rng.pick(innates.length ? innates : R.innatePool[role]);
+    // 拿到第一张卡之后，新招募的角色自带一张按天赋倾向随机的卡（已插好、已掷数值）
+    let card = null;
+    if (cfg().cards.recruitCard && save.cardsInfo && save.cardsInfo.firstGot) {
+      const pool = cfg().cards.pool[role];
+      const talentTags = talents.flatMap((t) => DAO.CONFIG.talents[t.id].tags || []);
+      const liked = pool.filter((id) => DAO.tagsMatch(cardTags(id), talentTags) && talentTags.length);
+      card = { id: rng.pick(liked.length ? liked : pool), roll: Math.round(rng.next() * 100) / 100 };
+    }
     return {
       id: 'c' + save.nextId, name, role, quality, origin: 'recruit',
       level: Math.max(1, maxLevel(save) + R.levelOffset), exp: 0,
       base: clone(ref.base), growth,
-      innate: rng.pick(R.innatePool[role]), branch: 0, talents,
+      innate, branch: 0, talents, card,
     };
   }
 
@@ -411,6 +463,7 @@
     const free = R.firstFree && !save.recruit.freeUsed;
     const opts = {};
     if (free && R.firstComplement) opts.role = starter(save).role === 'sword' ? 'mage' : 'sword';
+    if (free) opts.excludeInnates = R.firstExcludeInnates || [];
     const c = rollRecruit(save, opts);
     save.nextId++;
     save.gold -= cost;
@@ -458,7 +511,7 @@
   function researchNext(save) {
     const S = cfg().research.slots;
     const lv = save.research.slots + 1;
-    return lv <= S.max ? Object.assign({ level: lv }, S.levels[lv]) : null;
+    return lv <= Math.min(S.max, S.stageCap || S.max) ? Object.assign({ level: lv }, S.levels[lv]) : null;
   }
   function researchDurationMs(save, charId) {
     const nx = researchNext(save);
@@ -509,6 +562,130 @@
     return null;
   }
 
+  // ================= 技能卡 =================
+  function cardDef(id) { return DAO.CONFIG.cards[id] || null; }
+  function cardTags(id) {
+    const s = DAO.Model.cardSkill({ id, roll: 0.5 });
+    return s ? s.tags : [];
+  }
+  function canUseCard(c, cardId) {
+    const d = cardDef(cardId);
+    return !!(d && d.slot === 'active' && (!d.roles || d.roles.includes(c.role)));
+  }
+  function cardValue(id, roll) { const d = cardDef(id); return DAO.Model.rollValue(d.roll, roll); }
+  function bagCount(save) { return Object.values(save.bag).reduce((a, b) => a + b, 0); }
+  function addToBag(save, id, n) { save.bag[id] = (save.bag[id] || 0) + (n || 1); }
+
+  /** 第一段首领首次通关：按开局角色定位固定掉落第一张卡，并排队插卡引导 */
+  function grantFirstCard(save) {
+    if (save.cardsInfo.firstGot) return;
+    save.cardsInfo.firstGot = true;
+    addToBag(save, cfg().cards.firstCard[starter(save).role]);
+    queueGuide(save, 'firstCard');
+  }
+
+  /** 掉落（不改存档）：第二段起每击杀一只小怪，按概率掉同名卡或随机卡。种子由战斗种子派生。 */
+  function rollDrops(save, stageId, seed, victims) {
+    const D = cfg().cards.drops;
+    const ch = chapterOf(stageId);
+    if (!ch || !D.chapters.includes(ch.id)) return [];
+    const rng = new DAO.RNG(DAO.hashSeed('drop:' + seed + ':' + stageId));
+    const inserted = save.roster.filter((c) => c.card).map((c) => c.card.id);
+    const all = [].concat(...Object.values(cfg().cards.pool));
+    const out = [];
+    for (const v of victims) {
+      const t = cfg().enemies[v.id];
+      if (t && t.boss && !D.bossKills) continue;
+      const r = rng.next();
+      if (r < D.perKill.same) { if (inserted.length) out.push(rng.pick(inserted)); }
+      else if (r < D.perKill.same + D.perKill.other) out.push(rng.pick(all));
+    }
+    return out;
+  }
+
+  /** 掉落入包；记录「换卡选择」次数；有能用的卡就标记 bagNew（自动推关会停下来提示） */
+  function addDrops(save, drops) {
+    for (const id of drops) {
+      addToBag(save, id);
+      const kind = dropKind(save, id);
+      if (kind === 'swap') save.cardsInfo.swapOffers++;
+      if (kind) save.bagNew = true;
+    }
+    return drops;
+  }
+  /** 这张卡对现有角色意味着什么：reroll 重掷 / fill 插空槽 / swap 换卡选择 / null 暂时没人能用 */
+  function dropKind(save, id) {
+    const users = save.roster.filter((c) => canUseCard(c, id));
+    if (users.some((c) => c.card && c.card.id === id)) return 'reroll';
+    if (users.some((c) => !c.card)) return 'fill';
+    if (users.length) return 'swap';
+    return null;
+  }
+
+  /** 插卡预览：new 新插 / reroll 同名重掷（择优）/ replace 换卡（旧卡销毁） */
+  function insertPreview(save, charId, cardId) {
+    const c = getChar(save, charId);
+    if (!c || !canUseCard(c, cardId) || !(save.bag[cardId] > 0)) return null;
+    if (!c.card) return { mode: 'new' };
+    if (c.card.id === cardId) return { mode: 'reroll', old: Object.assign({ value: cardValue(c.card.id, c.card.roll) }, c.card) };
+    return { mode: 'replace', old: Object.assign({ value: cardValue(c.card.id, c.card.roll) }, c.card) };
+  }
+
+  /**
+   * 插卡。掷数值用独立的掷数值种子（hashSeed('roll:' + rollSeed)，每掷 +1）。
+   * @returns { mode, cardId, roll, value, old, kept: 'new'|'old' }
+   */
+  function insertCard(save, charId, cardId) {
+    const pv = insertPreview(save, charId, cardId);
+    if (!pv) return null;
+    const c = getChar(save, charId);
+    const rng = new DAO.RNG(DAO.hashSeed('roll:' + save.rollSeed));
+    save.rollSeed++;
+    const roll = Math.round(rng.next() * 100) / 100;
+    save.bag[cardId]--;
+    if (save.bag[cardId] <= 0) delete save.bag[cardId];
+    const res = { mode: pv.mode, cardId, roll, value: cardValue(cardId, roll), old: pv.old || null, kept: 'new' };
+    if (pv.mode === 'reroll') {
+      save.cardsInfo.rerolls++;
+      if (roll > c.card.roll) c.card.roll = roll; else res.kept = 'old';
+    } else {
+      if (pv.mode === 'replace') save.cardsInfo.replaces++;
+      else save.cardsInfo.inserts++;
+      c.card = { id: cardId, roll };
+    }
+    return res;
+  }
+
+  /** 背包里现在能做的事 */
+  function cardActions(save) {
+    const rerolls = [], fills = [], swaps = [];
+    for (const [id, n] of Object.entries(save.bag)) {
+      if (!(n > 0)) continue;
+      for (const c of save.roster) {
+        if (!canUseCard(c, id)) continue;
+        if (c.card && c.card.id === id) rerolls.push({ charId: c.id, cardId: id });
+        else if (!c.card) fills.push({ charId: c.id, cardId: id });
+        else swaps.push({ charId: c.id, cardId: id });
+      }
+    }
+    return { rerolls, fills, swaps, any: rerolls.length + fills.length + swaps.length > 0 };
+  }
+
+  /** 一键处理（提示框的默认动作、全自动玩家）：同名卡全部重掷，空卡槽插上能用的卡；不做换卡（换卡要玩家自己决定） */
+  function autoHandleCards(save) {
+    const results = [];
+    let guard = 0;
+    while (guard++ < 200) {
+      const a = cardActions(save);
+      const next = a.rerolls[0] || a.fills[0];
+      if (!next) break;
+      results.push(Object.assign({ charId: next.charId }, insertCard(save, next.charId, next.cardId)));
+    }
+    save.bagNew = false;
+    return results;
+  }
+  function dismissCardPrompt(save) { save.bagNew = false; }
+
   // ================= 引导 =================
   function queueGuide(save, id) {
     if (save.guide.seen[id] || save.guide.queue.includes(id)) return;
@@ -517,6 +694,10 @@
   function currentGuide(save) { return save.guide.queue[0] || null; }
   /** 引导确认按钮当前能否执行（例如研究金币不够） */
   function guideBlock(save, id) {
+    if (id === 'extraRecruit') {
+      if (save.pendingRecruit) return 'pending';
+      return save.gold >= recruitCost(save, guideNow) ? null : 'gold';
+    }
     if (id === 'research') {
       if (save.research.active || save.research.slots >= 2) return null;
       const rid = pickResearcher(save);
@@ -526,7 +707,9 @@
     return null;
   }
   /** 确认引导，执行它代表的动作 */
+  let guideNow = Date.now();
   function ackGuide(save, id, now) {
+    guideNow = now || Date.now();
     if (currentGuide(save) !== id) return { ok: false };
     if (guideBlock(save, id)) return { ok: false, error: guideBlock(save, id) };
     const info = { ok: true };
@@ -541,6 +724,13 @@
       }
     } else if (id === 'formation') {
       applyDefaultRows(save);
+    } else if (id === 'firstCard') {
+      const cid = cfg().cards.firstCard[starter(save).role];
+      const target = save.roster.find((c) => c.origin === 'starter' && canUseCard(c, cid) && !c.card) ||
+        save.roster.find((c) => canUseCard(c, cid) && !c.card);
+      if (target && (save.bag[cid] || 0) > 0) info.insert = insertCard(save, target.id, cid);
+    } else if (id === 'extraRecruit') {
+      info.recruit = recruit(save, now);
     }
     save.guide.queue.shift();
     save.guide.seen[id] = true;
@@ -561,6 +751,7 @@
     if (save.pendingRecruit) return { type: 'wait', reason: 'recruitDecision' };
     const g = currentGuide(save);
     if (g && A.stopAtGuides && !guideBlock(save, g)) return { type: 'wait', reason: 'guide', guide: g };
+    if (save.bagNew && save.settings.cardPrompts && cardActions(save).any) return { type: 'wait', reason: 'cards' };
     const frontier = nextStage(save);
     const best = bestClearedStage(save);
     if (!frontier) return best ? { type: 'idle', stageId: best.id } : { type: 'wait', reason: 'none' };
@@ -585,6 +776,8 @@
     recruitCost, canRecruit, rollRecruit, recruit, canDismiss, dismiss, resolvePending,
     researchNext, researchDurationMs, researchBlock, startResearch, tickResearch, pickResearcher,
     queueGuide, currentGuide, guideBlock, ackGuide,
+    chapters, chapterOf, chapterDone,
+    cardDef, cardTags, canUseCard, cardValue, bagCount, insertPreview, insertCard, cardActions, autoHandleCards, dismissCardPrompt, dropKind, grantFirstCard,
     autoDecide, confirmBoss,
   };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

@@ -122,6 +122,7 @@
       case 'target':
       case 'hitTargets': return primaryTargets.filter((u) => u.alive);
       case 'allies': return sideUnits(battle, actor.side);
+      case 'otherAllies': return sideUnits(battle, actor.side).filter((u) => u !== actor);
       case 'row': return rowUnits(battle, actor.side, actor.row);
       case 'ally': return [pickByRule(battle, sideUnits(battle, actor.side), 'lowestHp')].filter(Boolean);
       case 'enemies': return sideUnits(battle, otherSide(actor.side));

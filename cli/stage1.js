@@ -86,7 +86,7 @@ log();
   const m = G.migrate(JSON.parse(JSON.stringify(v1)), T0);
   const v1b = JSON.parse(JSON.stringify(v1)); v1b.progress.cleared = { '1-1': 1, '1-2': 1 };
   const m2 = G.migrate(v1b, T0);
-  const okM = m && m.v === 2 && m.roster.length === 1 && m.roster[0].level === 6 && m.roster[0].exp === 12 && m.seedCounter === 37 &&
+  const okM = m && m.v === C.saveVersion && m.roster.length === 1 && m.roster[0].level === 6 && m.roster[0].exp === 12 && m.seedCounter === 37 &&
     m.unlocks.cave && G.currentGuide(m) === 'cave' && m.progress.cleared['1-3'] === 2 && m.gold === C.migration.v1StartGold &&
     m2 && !m2.unlocks.cave && G.nextStage(m2).id === '1-3';
   checks.push(['阶段 0 存档能迁移', !!okM]);
@@ -169,7 +169,7 @@ function simulate(role, idx, opts) {
         now += E.guideMs; res.guideMs += E.guideMs;
         const info = G.ackGuide(save, d.guide, now);
         if (info.recruit && info.recruit.char) res.recruit = info.recruit.char;
-        if (d.guide === 'chapterDone') break;
+        if (d.guide.startsWith('done:')) break;
         continue;
       }
       if (d.reason === 'boss') { now += E.guideMs; res.guideMs += E.guideMs; G.confirmBoss(save, d.stageId); continue; }
@@ -184,7 +184,7 @@ function simulate(role, idx, opts) {
     const lvBefore = G.maxLevel(save);
     G.applyOutcome(save, o, { kind: isPush ? 'push' : 'idle', elapsedMs: ms });
     if (o.win && o.stageId === gate && res.gateAt == null) { res.gateLv = lvBefore; res.gateAt = now - T0; }
-    if (G.chapterCleared(save) && res.clearAt == null) { res.clearLv = G.starter(save).level; res.clearAt = now - T0; res.done = true; if (opts.stopAtClear) break; }
+    if (G.chapterDone(save, 'qingshi') && res.clearAt == null) { res.clearLv = G.starter(save).level; res.clearAt = now - T0; res.done = true; if (opts.stopAtClear) break; }
     if (now - T0 > 90 * 60000) break;
   }
   res.total = now - T0;
@@ -252,7 +252,7 @@ log();
       const save = G.newSave(role, 'p', now);
       save.seedCounter = 100000 + i * 7919; save.gachaSeed = 1 + i * 104729;
       let guard = 0;
-      while (guard++ < 4000 && !G.chapterCleared(save)) {
+      while (guard++ < 4000 && !G.chapterDone(save, 'qingshi')) {
         G.tickResearch(save, now);
         const d = G.autoDecide(save);
         if (d.type === 'wait') {

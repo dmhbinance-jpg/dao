@@ -1,23 +1,24 @@
 /**
- * 游戏主线配置（设计文档第 15 节「开局成长阶梯」）。当前做到阶段 1：洞府开门。
+ * 游戏主线配置（设计文档第 15 节「开局成长阶梯」）。当前做到阶段 2：第一张技能卡。
  *
- *  - starters  开局角色：剑修或法修，资质中等且固定，1 条属性型天赋，不随机
+ *  - starters  开局角色：剑修或法修，资质中等且固定，1 条与本门标签匹配的天赋（阶段 2 起由属性型改为标签型），不随机
  *  - enemies   敌人模板：三维 = base + growth × 等级，与玩家角色同一套公式
- *  - stages    引导关第一段：1-4 是卡关点，单人很难过、两人能过
+ *  - chapters  引导关：第一段青石山（1-4 卡关，单人难过、两人能过）、第二段黑风林（首领狐王，第一张卡能解）
+ *  - cards     技能卡：第一张卡、卡池、掉落率、招募自带卡
  *  - exp/gold  击杀经验与金币
  *  - recruit   洞府招募（抽卡）：首抽免费且保底互补定位；品质决定资质区间和天赋条数
  *  - research  研究：只有「上阵位」一条，每级 +1，从 1 到 5；研究占用一个角色
  *  - auto      自动推关
  *
  * 开局角色和招募角色规则完全相同，没有主角特殊逻辑。
- * 只有普攻 + 固有主动：不插技能卡、不选 2选1（固有主动固定用 A 分支）、没有被动卡槽。
+ * 每个角色：普攻 + 固有主动（固定 A 分支，2选1 不做）+ 1 个主动卡槽（阶段 2 起）；没有被动卡槽。
  */
 (function (root) {
   'use strict';
   const DAO = (root.DAO = root.DAO || {});
 
   DAO.CONFIG.game = {
-    saveVersion: 2,
+    saveVersion: 3,
 
     // ===== 开局角色 =====
     starters: {
@@ -27,7 +28,7 @@
         base: { str: 14, agi: 10, int: 4 },
         growth: { str: 3.0, agi: 2.0, int: 0.8 },   // 每级加的三维（成长资质，中等）
         innate: 'jianqizhan', branch: 0,             // 剑气斩·单：单体 ×2.2，CD 2
-        talents: [{ id: 'li', roll: 0.5 }],          // 力拔 +10%
+        talents: [{ id: 'jianxin', roll: 0.5 }],     // 剑心：剑系伤害 +13%（和剑系卡标签匹配）
       },
       mage: {
         role: 'mage', title: '法修',
@@ -35,7 +36,7 @@
         base: { str: 4, agi: 10, int: 14 },
         growth: { str: 0.8, agi: 2.0, int: 3.0 },
         innate: 'lianzhuhuo', branch: 0,             // 连珠火·散：弹射 4 次，逐跳 ×0.75，CD 2
-        talents: [{ id: 'zhi', roll: 0.5 }],         // 慧根 +10%
+        talents: [{ id: 'huoling', roll: 0.5 }],     // 火灵：火系伤害 +13%（和火系卡标签匹配）
       },
     },
     startLevel: 1,
@@ -75,14 +76,24 @@
         base: { str: 10, agi: 6, int: 3 }, growth: { str: 2.4, agi: 1.4, int: 0.8 },
         hpMul: 2.6, exp: 6.0, gold: 10.0, talents: [{ id: 'tiepi', roll: 0.5 }],
       },
+      blackwolf: {
+        name: '黑风狼', role: 'beast', basic: 'beast', innate: 'pounce', branch: 0,
+        base: { str: 7, agi: 10, int: 1 }, growth: { str: 2.3, agi: 1.6, int: 0.4 },
+        hpMul: 0.6, exp: 1.3, gold: 1.3, talents: [],
+      },
+      foxking: {
+        // 首领机制：躲在后排、开场护盾；「妖风阵」让其他妖兽护甲 / 法抗 +60（不加自己）。本体血薄、伤害高——先越过前排打掉它最划算。
+        name: '黑风狐王', title: '首领', role: 'demon', basic: 'demon', innate: 'yaofengzhen', branch: 0, boss: true,
+        base: { str: 4, agi: 10, int: 10 }, growth: { str: 0.8, agi: 1.6, int: 4.0 },
+        hpMul: 0.5, dmgUp: 2.5, exp: 8.0, gold: 12.0, talents: [{ id: 'yaofeng', roll: 1 }],
+      },
     },
 
     // ===== 引导关第一段 =====
     // 每关 enemies: [{ enemyId, level, row }]。
     // 1-4 是卡关点：前排石甲猪血厚、后排两只狐妖远程。剑修单人被狐妖磨死，法修单人被石甲猪顶死。
     // 1-4 第一次战败时开放洞府（招募 + 研究）。
-    chapter: { id: 'qingshi', name: '青石山', desc: '引导关第一段' },
-    stages: [
+    chapters: [{ id: 'qingshi', name: '青石山', desc: '引导关第一段', stages: [
       { id: '1-1', name: '山道', note: '1 打 1',
         enemies: [{ enemyId: 'wolf', level: 1, row: 'front' }] },
       { id: '1-2', name: '林边', note: '1 打 1',
@@ -107,7 +118,44 @@
         enemies: [{ enemyId: 'stoneboar', level: 8, row: 'front' }, { enemyId: 'wolf', level: 8, row: 'front' }, { enemyId: 'fox', level: 8, row: 'back' }, { enemyId: 'fox', level: 8, row: 'back' }] },
       { id: '1-12', name: '山魈', note: '首领', boss: true,
         enemies: [{ enemyId: 'shanxiao', level: 10, row: 'front' }, { enemyId: 'wolf', level: 9, row: 'front' }, { enemyId: 'wolf', level: 9, row: 'front' }] },
-    ],
+    ] },
+    // 第二段：小怪会掉技能卡（见 cards.drops）。首领狐王躲在后排、开场自带大护盾，
+    // 剑修的穿云剑（优先打后排）和法修的火雨（打整个后排）正好能越过前排打到它。
+    { id: 'heifeng', name: '黑风林', desc: '引导关第二段', stages: [
+      { id: '2-1', name: '林口', note: '黑风狼出没',
+        enemies: [{ enemyId: 'blackwolf', level: 16, row: 'front' }, { enemyId: 'blackwolf', level: 16, row: 'front' }, { enemyId: 'fox', level: 16, row: 'back' }] },
+      { id: '2-2', name: '风穴', note: '野猪带狼',
+        enemies: [{ enemyId: 'boar', level: 17, row: 'front' }, { enemyId: 'wolf', level: 17, row: 'front' }, { enemyId: 'fox', level: 17, row: 'back' }] },
+      { id: '2-3', name: '狐群', note: '两只狐妖在后排',
+        enemies: [{ enemyId: 'wolf', level: 20, row: 'front' }, { enemyId: 'fox', level: 20, row: 'back' }, { enemyId: 'fox', level: 20, row: 'back' }] },
+      { id: '2-4', name: '石阵', note: '两只石甲猪',
+        enemies: [{ enemyId: 'stoneboar', level: 14, row: 'front' }, { enemyId: 'stoneboar', level: 14, row: 'front' }, { enemyId: 'fox', level: 14, row: 'back' }] },
+      { id: '2-5', name: '狼嚎', note: '三只黑风狼',
+        enemies: [{ enemyId: 'blackwolf', level: 18, row: 'front' }, { enemyId: 'blackwolf', level: 18, row: 'front' }, { enemyId: 'blackwolf', level: 18, row: 'front' }] },
+      { id: '2-6', name: '妖风', note: '前后各两只',
+        enemies: [{ enemyId: 'stoneboar', level: 16, row: 'front' }, { enemyId: 'wolf', level: 16, row: 'front' }, { enemyId: 'fox', level: 16, row: 'back' }, { enemyId: 'fox', level: 16, row: 'back' }] },
+      { id: '2-7', name: '林深', note: '五只妖兽',
+        enemies: [{ enemyId: 'blackwolf', level: 15, row: 'front' }, { enemyId: 'boar', level: 15, row: 'front' }, { enemyId: 'blackwolf', level: 15, row: 'front' }, { enemyId: 'fox', level: 15, row: 'back' }, { enemyId: 'fox', level: 15, row: 'back' }] },
+      { id: '2-8', name: '黑风狐王', note: '首领：躲在后排给前排加甲', boss: true,
+        enemies: [{ enemyId: 'stoneboar', level: 13, row: 'front' }, { enemyId: 'stoneboar', level: 13, row: 'front' }, { enemyId: 'foxking', level: 15, row: 'back' }] },
+    ] }],
+
+    // ===== 技能卡（设计文档第 8 节） =====
+    // 散卡在背包里没有数值；插卡时才掷一条主数值（档位 0–100）。同名卡再插 = 重掷，自动择优；换别的卡 = 旧卡销毁。
+    cards: {
+      firstCardStage: '1-12',                          // 第一段首领首次通关固定掉落
+      firstCard: { sword: 'chuanyun', mage: 'huoyu' },  // 按开局角色定位：剑修剑系卡、法修火系卡
+      pool: { sword: ['chuanyun', 'jianqi', 'zhenshe'], mage: ['huoyu', 'liuhuo', 'lieyan'] },
+      drops: {
+        chapters: ['heifeng'],   // 哪些章节的小怪掉卡
+        perKill: {
+          same: 0.10,            // 每击杀一只：掉一张「已插在角色身上的卡」的同名卡（用来重掷）
+          other: 0.09,          // 每击杀一只：从两种定位的卡池里随机掉一张
+        },
+        bossKills: false,        // 首领本身不掉随机卡
+      },
+      recruitCard: true,         // 拿到第一张卡之后，新招募的角色自带一张按天赋倾向随机的卡（已插好、已掷数值）
+    },
 
     // ===== 经验 =====
     exp: {
@@ -145,6 +193,8 @@
       tierWeights: { stat: 60, tag: 30, trigger: 10 },
       excludeTalents: ['renxin'], // 治疗类天赋：第一版没有治疗技能
       innatePool: { sword: ['jianqizhan', 'liuying'], mage: ['lianzhuhuo', 'chiyan'] },
+      firstExcludeInnates: ['liuying'], // 首抽不出「流影」（穿透、优先打后排），保证「剑修打不到后排」的教学成立
+      extraGuideStage: '2-3',           // 第二段这一关首次通关后，引导一次额外招募（花金币）
       names: ['云渺', '沈烛', '陆青', '顾长川', '萧寒', '林岫', '白鹭', '江离', '谢沉', '苏晚', '叶澄', '温衡',
         '韩樵', '裴雪', '楚歌', '秦岳', '方岩', '宋清', '许溪', '唐苇', '段云', '凌霄', '易水', '洛川'],
     },
@@ -154,12 +204,13 @@
       slots: {
         name: '上阵位',
         start: 1, max: 5,
+        stageCap: 3,           // 当前阶段最多研究到第几级（阶段 2：第 3 级可选，不是通关必需）
         // 升到第 N 级（= N 个上阵位）的花费与时长（秒）
         levels: {
           2: { gold: 20, sec: 60 },
-          3: { gold: 120, sec: 240 },
-          4: { gold: 400, sec: 600 },
-          5: { gold: 1200, sec: 1800 },
+          3: { gold: 3500, sec: 600 },  // 阶段 2 的主要金币出口（可选）
+          4: { gold: 6000, sec: 600 },
+          5: { gold: 15000, sec: 1800 },
         },
         intSpeedPerPoint: 0.01, // 研究者每点智力让研究快 1%（时长 ÷ (1 + 智 × 0.01)）
       },
@@ -170,6 +221,11 @@
       defaultOn: true,
       stopBeforeBoss: true,  // 首领关第一次挑战前停下来等确认
       stopAtGuides: true,    // 新系统开放的引导停下来等确认
+    },
+
+    // ===== 默认设置 =====
+    settings: {
+      cardPrompts: true,     // 拿到卡、背包里有可重掷的同名卡时，自动推关停下来提示
     },
 
     // ===== 挂机 / 战斗计时 =====

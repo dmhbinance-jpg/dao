@@ -84,6 +84,12 @@
         effects: [{ kind: 'pull', target: 'hitTargets', value: 250 }] }] },
     foxfire: { id: 'foxfire', name: '狐火', variants: [
       { name: '狐火', shape: 'single', range: 'ranged', dmgType: 'magic', mult: 1.7, cd: 2, tags: [T.MAGIC, T.FIRE] }] },
+    yaofengzhen: { id: 'yaofengzhen', name: '妖风阵', variants: [
+      { name: '妖风阵', shape: 'single', range: 'ranged', dmgType: 'none', cd: 1, tags: [],
+        effects: [
+          { kind: 'buff', target: 'otherAllies', stat: 'armor', value: 60, duration: 2 },
+          { kind: 'buff', target: 'otherAllies', stat: 'resist', value: 60, duration: 2 },
+        ] }] }, // 狐王活着就一直给其他妖兽加护甲 / 法抗（不加自己）：先打掉它，前排才好打
     shanxiao: { id: 'shanxiao', name: '裂山', variants: [
       { name: '裂山', shape: 'front', range: 'melee', dmgType: 'physical', mult: 2.0, cd: 3, tags: [T.PHYSICAL],
         effects: [{ kind: 'buff', target: 'self', stat: 'armor', value: 15, duration: 2 }] }] },
@@ -96,7 +102,7 @@
     // ===== 主动卡 =====
     chuanyun: { id: 'chuanyun', name: '穿云剑', slot: 'active', quality: 'yellow', roles: ['sword'],
       roll: { key: 'mult', min: 1.3, max: 2.0 },
-      skill: { shape: 'single', range: 'melee', pierce: true, dmgType: 'physical', mult: 1.6, cd: 2, tags: [T.PHYSICAL, T.SWORD] } },
+      skill: { shape: 'single', range: 'melee', pierce: true, targetRule: 'backRow', dmgType: 'physical', mult: 1.6, cd: 2, tags: [T.PHYSICAL, T.SWORD] } }, // 穿透、优先打后排
     jianqi: { id: 'jianqi', name: '剑气横扫', slot: 'active', quality: 'blue', roles: ['sword'],
       roll: { key: 'mult', min: 0.9, max: 1.4 },
       skill: { shape: 'front', range: 'melee', dmgType: 'physical', mult: 1.1, cd: 2, tags: [T.PHYSICAL, T.SWORD] } },
@@ -104,8 +110,8 @@
       roll: { key: 'mult', min: 0.6, max: 0.9 },
       skill: { shape: 'all', range: 'ranged', dmgType: 'magic', mult: 0.75, cd: 2, tags: [T.MAGIC, T.FIRE] } },
     huoyu: { id: 'huoyu', name: '火雨', slot: 'active', quality: 'yellow', roles: ['mage'],
-      roll: { key: 'mult', min: 1.0, max: 1.5 },
-      skill: { shape: 'back', range: 'ranged', dmgType: 'magic', mult: 1.2, cd: 2, tags: [T.MAGIC, T.FIRE] } },
+      roll: { key: 'mult', min: 1.3, max: 1.9 },
+      skill: { shape: 'back', range: 'ranged', dmgType: 'magic', mult: 1.6, cd: 2, tags: [T.MAGIC, T.FIRE] } },
     liuhuo: { id: 'liuhuo', name: '流火弹', slot: 'active', quality: 'yellow', roles: ['mage'],
       roll: { key: 'mult', min: 0.8, max: 1.2 },
       skill: { shape: 'bounce', range: 'ranged', dmgType: 'magic', mult: 1.0, bounces: 3, bounceDecay: 0.75, cd: 1, tags: [T.MAGIC, T.FIRE] } },

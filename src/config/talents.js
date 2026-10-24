@@ -68,6 +68,11 @@
       event: 'battleStart',
       effect: { kind: 'buffRow', stat: 'dmgUp', duration: 3 },
       desc: '开场时同排队友增伤 8%–15%（3 次行动）' },
+    // 敌人专属
+    yaofeng: { name: '妖风护体', tier: 'trigger', rare: true, exclusive: 'foxking', min: 0.3, max: 0.3,
+      event: 'battleStart',
+      effect: { kind: 'shieldSelf' },
+      desc: '开场获得最大生命 30% 的护盾' },
     // 名将专属（exclusive = 角色 id；文档：名将专属天赋可以认具体技能）
     pojunzhiwei: { name: '破军之威', tier: 'trigger', rare: true, exclusive: 'huoxiao', min: 1, max: 1,
       event: 'kill',

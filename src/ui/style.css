@@ -428,3 +428,36 @@ button.ghost { background: transparent; }
   .fm-rows { grid-template-columns: 1fr; }
   .fm-enemy { display: none; }
 }
+
+/* ===================== 阶段 2：技能卡 ===================== */
+.chapter-block { display: grid; gap: 2px; margin-bottom: 10px; }
+.chapter-block.locked { opacity: .55; }
+.chapter-block.done > summary { list-style: none; cursor: pointer; }
+.chapter-block.done > summary::-webkit-details-marker { display: none; }
+.chapter-block.done > summary .stages-head::after { content: "展开"; font-size: 12px; color: var(--ink-3); margin-left: 8px; }
+.chapter-block.done[open] > summary .stages-head::after { content: "收起"; }
+.drops { color: var(--gold); font-weight: 600; }
+.card-slot { border: 1px solid var(--gold); border-radius: 4px; padding: 6px 8px; display: grid; gap: 2px; background: color-mix(in srgb, var(--gold) 6%, transparent); }
+.card-slot.empty { border-style: dashed; border-color: var(--line); background: transparent; display: flex; gap: 8px; align-items: center; }
+.cs-top { display: flex; gap: 6px; align-items: baseline; flex-wrap: wrap; }
+.cs-label { font-size: 11px; color: var(--ink-3); }
+.cs-val { margin-left: auto; font-variant-numeric: tabular-nums; font-size: 13px; }
+.bag-page { display: grid; gap: 12px; }
+.bag-head { display: grid; gap: 8px; }
+.bag-head h2 { margin: 0 0 4px; font-size: 18px; }
+.bag-head p { margin: 0; }
+.bag-tools { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+.check { display: inline-flex; align-items: center; gap: 4px; font-size: 13px; cursor: pointer; }
+.bag-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }
+.bag-item { display: grid; gap: 6px; align-content: start; margin-bottom: 0; }
+.bi-head { display: flex; gap: 6px; align-items: baseline; }
+.bi-count { margin-left: auto; font-variant-numeric: tabular-nums; color: var(--ink-2); }
+.bi-user { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 8px; align-items: center; font-size: 13px; border-top: 1px dotted var(--line); padding-top: 6px; }
+.bi-user .role-glyph { width: 26px; height: 26px; font-size: 13px; }
+.roll-compare { display: flex; gap: 10px; align-items: center; justify-content: center; margin: 10px 0; }
+.roll-box { border: 1px solid var(--line); border-radius: 6px; padding: 8px 14px; display: grid; justify-items: center; gap: 2px; min-width: 110px; opacity: .6; }
+.roll-box b { font-size: 22px; font-variant-numeric: tabular-nums; }
+.roll-box.kept { opacity: 1; border-color: var(--a); background: var(--a-soft); }
+.kept-mark { color: var(--a); font-weight: 700; font-size: 12px; }
+.vs-arrow { color: var(--ink-3); }
+.modal-extra { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-top: 8px; }
