@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>道 · 配置网站</title>
+<link rel="stylesheet" href="../src/ui/style.css">
+<link rel="stylesheet" href="tools.css">
+</head>
+<body class="tools">
+<header class="top">
+  <div class="brand"><span class="seal">道</span><div><b>配置网站</b><small>开发工具 · 只写 src/config/tuning.js · 不被游戏加载</small></div></div>
+  <nav class="tnav"><a class="on" href="./">调参</a><a href="save.html">存档工具</a><a href="../" target="_blank">打开游戏 ↗</a></nav>
+</header>
+<div class="tbar" id="tbar">
+  <input id="search" type="search" placeholder="搜索配置项（路径或中文名，例如 research、采集、costs）" autocomplete="off">
+  <label class="check"><input type="checkbox" id="only-changed"> 只看改过的</label>
+  <span class="grow"></span>
+  <span id="status" class="muted"></span>
+  <button id="reset-all" type="button">全部恢复默认</button>
+  <button id="save" class="primary" type="button">保存</button>
+</div>
+<main class="tmain">
+  <aside id="groups" class="tgroups"></aside>
+  <section id="list" class="tlist"></section>
+</main>
+<div class="toasts" id="toasts" aria-live="polite"></div>
+
+<!-- 只加载默认配置（不加载 tuning.js），当前值从本地服务读 -->
+<script src="../src/core/tags.js"></script>
+<script src="../src/core/rng.js"></script>
+<script src="../src/config/coef.js"></script>
+<script src="../src/config/skills.js"></script>
+<script src="../src/config/talents.js"></script>
+<script src="../src/config/characters.js"></script>
+<script src="../src/config/game.js"></script>
+<script src="../src/config/assets.js"></script>
+<script src="../src/config/apply-tuning.js"></script>
+<script src="validate.js"></script>
+<script src="../src/ui/util.js"></script>
+<script src="config.js"></script>
+</body>
+</html>

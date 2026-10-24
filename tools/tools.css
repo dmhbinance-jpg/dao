@@ -1,0 +1,40 @@
+/* 配置网站（tools/）专用样式；颜色变量沿用游戏的 style.css */
+body.tools { min-height: 100vh; }
+.tnav { display: flex; gap: 4px; }
+.tnav a { padding: 6px 12px; color: var(--ink-2); text-decoration: none; border-bottom: 2px solid transparent; }
+.tnav a.on { color: var(--ink); border-bottom-color: var(--b); font-weight: 600; }
+.tbar { position: sticky; top: 0; z-index: 5; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; padding: 10px 20px; background: var(--paper); border-bottom: 1px solid var(--line); }
+.tbar input[type=search] { flex: 1 1 320px; max-width: 520px; padding: 6px 10px; border: 1px solid var(--line); border-radius: 4px; background: var(--card); color: var(--ink); font: inherit; }
+.tbar .grow { flex: 1; }
+.tmain { display: grid; grid-template-columns: 200px minmax(0, 1fr); gap: 16px; padding: 16px 20px 60px; }
+@media (max-width: 760px) { .tmain { grid-template-columns: 1fr; } .tgroups { position: static !important; max-height: none !important; display: flex; flex-wrap: wrap; gap: 4px; } }
+.tgroups { position: sticky; top: 64px; align-self: start; max-height: calc(100vh - 80px); overflow: auto; display: grid; gap: 2px; }
+.tgroups button { text-align: left; border: none; background: transparent; padding: 4px 8px; border-radius: 4px; display: flex; justify-content: space-between; gap: 6px; }
+.tgroups button:hover { background: var(--paper-2); }
+.tgroups button small { color: var(--ink-3); }
+.tgroups button.mod { color: var(--gold); font-weight: 600; }
+.tgroup { margin-bottom: 18px; }
+.tgroup > h2 { font-size: 16px; margin: 0 0 6px; display: flex; gap: 8px; align-items: baseline; }
+.trow { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 0.8fr) minmax(0, 1fr) 72px; gap: 8px; align-items: center; padding: 5px 8px; border-bottom: 1px dashed var(--line); font-size: 13px; }
+.trow.head { font-weight: 600; color: var(--ink-2); border-bottom-style: solid; }
+.trow.mod { background: color-mix(in srgb, var(--gold) 12%, transparent); }
+.trow.err { background: var(--b-soft); }
+.trow .tpath { font-family: var(--mono); font-size: 12px; word-break: break-all; }
+.trow .tlabel { display: block; font-family: var(--font); font-size: 13px; color: var(--ink); }
+.trow .tdef { font-family: var(--mono); font-size: 12px; color: var(--ink-3); word-break: break-all; }
+.trow input[type=number], .trow input[type=text] { width: 100%; padding: 3px 6px; border: 1px solid var(--line); border-radius: 4px; background: var(--card); color: var(--ink); font: 12px var(--mono); }
+.trow .terr { grid-column: 1 / -1; color: var(--b); font-size: 12px; }
+.trow button { padding: 2px 6px; font-size: 12px; }
+.tmore { margin: 6px 8px; }
+.tnote { background: var(--card); border: 1px solid var(--line); border-radius: 6px; padding: 10px 14px; margin-bottom: 14px; font-size: 13px; color: var(--ink-2); }
+.tnote b { color: var(--ink); }
+/* 存档工具 */
+.sgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 14px; padding: 16px 20px 60px; }
+.sgrid .card h2 { font-size: 16px; margin: 0 0 8px; }
+.srow { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 6px 0; }
+.srow input[type=number] { width: 110px; }
+.srow select { min-width: 160px; }
+.sgrid textarea { width: 100%; min-height: 120px; font: 12px var(--mono); background: var(--paper); color: var(--ink); border: 1px solid var(--line); border-radius: 4px; padding: 6px; }
+.skv { display: grid; grid-template-columns: auto 1fr; gap: 2px 12px; font-size: 13px; }
+.skv span { color: var(--ink-3); }
+.tbar .bad { color: var(--b); }

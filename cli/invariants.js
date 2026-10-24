@@ -11,6 +11,9 @@
  *     结束恰好一次，时间线和战斗结果不被修改；游戏结算不受回放方式影响
  *  D. 规则：再动每回合 ≤ 1；每排 ≤ 3；破甲不让防御低于 0；每次命中伤害 ≥ 1
  *  E. 资源：配置里的 art 都在资源清单登记，清单没有多余 id；找不到资源时返回 null（界面退回文字 / 色块）
+ *  F. 时间：游戏时钟累加「真实流逝 × 倍率」不跳变；倍率 10 时研究 / 采集 / 挂机都按 10 倍推进；倍率不改战斗结果
+ *  G. 招募：3 名候选同种子一致；首抽互补、排除流影；价格固定；名额满不能招；候选存档、不能放弃重抽；为采集招募默认选力资质最高
+ *  H. 调参：tuning 按路径合并、错误项不生效
  */
 'use strict';
 const DAO = require('../src/node.js');
@@ -276,6 +279,100 @@ check('D3 破甲不让防御低于 0', DAO.Damage.defenseMul(-500) === DAO.Damag
   check('E5 登记了路径时按用途取图、取不到用 default', DAO.Art.path('__t.str') === R + 'a/b.png' && DAO.Art.path('__t.obj', 'portrait') === R + 'p.png' &&
     DAO.Art.path('__t.obj', 'icon') === R + 'd.png' && DAO.Art.path('__t.objNoDef', 'icon') === R + 'i.png');
   for (const k of Object.keys(imgs)) if (!(k in keep)) delete imgs[k];
+}
+
+// ---------------- F. 时间倍率 / 游戏时钟 ----------------
+{
+  // 模拟真实时钟：可以前进、停住、倒退
+  let real = 1000;
+  const clk = DAO.GameClock.create({ scale: 10, realNow: () => real });
+  const g0 = clk.now();
+  real += 60000; const g1 = clk.now();
+  real -= 5000; const g2 = clk.now();          // 真实时钟倒退：游戏时间不倒退
+  real += 5000; const g3 = clk.now();          // 回到原处：不重复计时
+  real += 1000; const g4 = clk.now();
+  check('F1 游戏时钟 = 累加的真实流逝 × 倍率，不跳变、不倒退', g1 - g0 === 600000 && g2 === g1 && g3 === g1 && g4 - g3 === 10000);
+  const saved = clk.save();
+  real += 30000;
+  const clk2 = DAO.GameClock.create({ scale: 10, realNow: () => real, saved });
+  check('F2 重新打开时从存档的游戏时间接着走（关闭期间按倍率计入）', clk2.now() === saved.game + 300000);
+  const clk1 = DAO.GameClock.create({ scale: 1, realNow: () => real });
+  check('F3 倍率 1 时游戏时间就是真实时间', clk1.now() === real);
+
+  // 研究 / 采集 / 挂机按倍率推进：真实流逝相同，倍率 10 的推进量是倍率 1 的 10 倍
+  const progress = (scale) => {
+    let rl = 5000;
+    const ck = DAO.GameClock.create({ scale, realNow: () => rl });
+    const s = gameSave('sword', 12, null);
+    s.unlocks.forge = true; s.research.slots = 2;
+    const g = s.roster.find((c) => !G.inLineup(s, c.id)) || s.roster[2];
+    G.removeFromLineup(s, s.lineup[s.lineup.length - 1].id);
+    const gid = s.roster.find((c) => G.status(s, c.id) === 'idle').id;
+    G.startGather(s, gid, ck.now());
+    G.startResearch(s, s.lineup[s.lineup.length - 1].id, ck.now());
+    const dur = s.research.active.endsAt - s.research.active.startedAt;
+    rl += 3000;                                   // 真实 3 秒
+    const now = ck.now();
+    G.tickGather(s, now);
+    const researchDone = !!G.tickResearch(s, now);
+    // 挂机：一场后台战斗的真实等待 = 游戏时长 ÷ 倍率
+    const o = G.runBattle(s, '1-3');
+    return { ore: s.ore, researchDone, dur, idleReal: ck.realMs(G.backgroundBattleMs(o)), idleGame: G.backgroundBattleMs(o), gameElapsed: now - 5000 };
+  };
+  const p1 = progress(1), p10 = progress(10);
+  check('F4 倍率 10：采集产出是倍率 1 的 10 倍', Math.abs(p10.ore - p1.ore * 10) < 1e-6 && p1.ore > 0, `${p1.ore} vs ${p10.ore}`);
+  check('F5 倍率 10：研究倒计时 10 倍速（同样 3 秒真实时间，倍率 10 走完了 30 秒的研究进度）', p10.gameElapsed === 30000 && p1.gameElapsed === 3000 && p10.researchDone === (p10.dur <= 30000) && p1.researchDone === (p1.dur <= 3000), JSON.stringify([p1, p10]));
+  check('F6 倍率 10：挂机每场的真实等待是倍率 1 的十分之一，游戏时长不变', Math.abs(p10.idleReal * 10 - p1.idleReal) < 1e-6 && p10.idleGame === p1.idleGame);
+  // 战斗结果与倍率无关
+  const keep = C.debug.timeScale;
+  const before = samples.slice(0, 40).map((smp) => summary(smp.make(true).run()));
+  C.debug.timeScale = 10;
+  const after = samples.slice(0, 40).map((smp) => summary(smp.make(true).run()));
+  C.debug.timeScale = keep;
+  check('F7 时间倍率不改战斗结果（同种子倍率 1 / 10 结果一样）', JSON.stringify(before) === JSON.stringify(after));
+}
+
+// ---------------- G. 招募 3 选 1 / 名额 ----------------
+{
+  const mk = (role, seed, free) => { const s = G.newSave(role, 't', T0); s.unlocks.cave = true; s.gold = 1000; s.gachaSeed = seed; if (!free) s.recruit.freeUsed = true; G.recruit(s, T0); return s; };
+  let same = true, firstOk = true, three = true;
+  for (let i = 0; i < 200; i++) {
+    const role = i % 2 ? 'sword' : 'mage';
+    if (JSON.stringify(mk(role, 50 + i, false).recruitChoice) !== JSON.stringify(mk(role, 50 + i, false).recruitChoice)) same = false;
+    const f = mk(role, 900 + i, true);
+    const want = role === 'sword' ? 'mage' : 'sword';
+    if (f.recruitChoice.cost !== 0 || !f.recruitChoice.candidates.every((c) => c.role === want && !C.game.recruit.firstExcludeInnates.includes(c.innate))) firstOk = false;
+    if (f.recruitChoice.candidates.length !== C.game.recruit.candidates || new Set(f.recruitChoice.candidates.map((c) => c.name)).size !== C.game.recruit.candidates) three = false;
+  }
+  check('G1 同招募种子出同样的 3 名候选', same);
+  check('G2 首抽免费，3 名候选都是互补定位、都不出流影', firstOk);
+  check('G3 每次招募 3 名候选、名字不重复', three);
+  const s = G.newSave('sword', 't', T0); s.unlocks.cave = true; s.recruit.freeUsed = true; s.gold = 1e6;
+  const costs = [];
+  while (G.canRecruit(s)) { const g0 = s.gold; G.recruit(s, T0); costs.push(g0 - s.gold); G.chooseRecruit(s, G.defaultChoice(s), T0); }
+  check('G4 价格固定、多次招募不涨价', costs.every((c) => c === C.game.recruit.cost) && costs.length > 1, costs.join(','));
+  check('G5 名额满 10 人时不能招募', s.roster.length === C.game.roster.cap && G.recruitBlock(s) === 'full');
+  const t = G.newSave('mage', 't', T0); t.unlocks.cave = true; t.recruit.freeUsed = true; t.gold = 1000;
+  G.recruit(t, T0);
+  const blocked = G.recruit(t, T0);
+  const kept = t.recruitChoice.candidates[1].name;
+  const r = G.chooseRecruit(t, 1, T0);
+  check('G6 候选存进存档；没选之前不能再招（不能放弃重抽）；选中的留下、其余离开', !blocked.ok && blocked.error === 'choosing' && r.char.name === kept && t.roster.length === 2 && !t.recruitChoice);
+  const u = G.newSave('mage', 't', T0); u.unlocks.cave = true; u.unlocks.forge = true; u.recruit.freeUsed = true; u.gold = 1000;
+  G.recruit(u, T0, { reason: 'gather' });
+  const di = G.defaultChoice(u);
+  const strMax = Math.max(...u.recruitChoice.candidates.map((c) => c.growth.str));
+  const gr = G.chooseRecruit(u, di, T0);
+  check('G7 为采集招募：默认选力资质最高的，选完直接去采集', u.roster.find((c) => c.id === gr.char.id).growth.str === strMax && G.isGathering(u, gr.char.id));
+}
+
+// ---------------- H. 调参（tuning.js） ----------------
+{
+  const cfg = clone(C);
+  const res = DAO.Tuning.apply({ 'game.research.slots.levels.2.sec': 3, 'game.nope': 1, 'game.recruit.unlockStage': 5, 'assets.images["unit.sword"]': 'units/sword.png' }, cfg);
+  check('H1 tuning 合并：已有的叶子按路径改；不存在 / 类型不对的不改并报出来', cfg.game.research.slots.levels[2].sec === 3 && cfg.assets.images['unit.sword'] === 'units/sword.png' &&
+    res.applied.length === 2 && res.errors.length === 2 && cfg.game.recruit.unlockStage === C.game.recruit.unlockStage);
+  check('H2 本次加载的 tuning.js 没有报错项', !DAO.Tuning.status.errors.length, JSON.stringify(DAO.Tuning.status.errors));
 }
 
 // ---------------- 输出 ----------------

@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>道 · 存档工具</title>
+<link rel="stylesheet" href="../src/ui/style.css">
+<link rel="stylesheet" href="tools.css">
+</head>
+<body class="tools">
+<header class="top">
+  <div class="brand"><span class="seal">道</span><div><b>存档工具</b><small>开发工具 · 改的是本机浏览器里的游戏存档</small></div></div>
+  <nav class="tnav"><a href="./">调参</a><a class="on" href="save.html">存档工具</a><a href="../" target="_blank">打开游戏 ↗</a></nav>
+</header>
+<div class="tnote" style="margin:16px 20px 0">
+  <b>只对「从同一个本地服务打开的游戏」有效。</b>存档存在浏览器的 localStorage 里，按网址隔离：
+  这一页改的是 <code id="origin"></code> 下的存档，也就是从 <a href="../" target="_blank">这个服务打开的游戏</a>。
+  双击 index.html（file://）打开的游戏存档在另一个地方，这里看不到、也改不到。
+  游戏页开着也没关系：这里一改，游戏页会自动重新读入存档。
+</div>
+<main class="sgrid" id="app"></main>
+<div class="toasts" id="toasts" aria-live="polite"></div>
+
+<script src="../src/core/tags.js"></script>
+<script src="../src/core/rng.js"></script>
+<script src="../src/config/coef.js"></script>
+<script src="../src/config/skills.js"></script>
+<script src="../src/config/talents.js"></script>
+<script src="../src/config/characters.js"></script>
+<script src="../src/config/game.js"></script>
+<script src="../src/config/assets.js"></script>
+<script src="../src/config/tuning.js"></script>
+<script src="../src/config/apply-tuning.js"></script>
+<script src="../src/core/events.js"></script>
+<script src="../src/core/model.js"></script>
+<script src="../src/battle/targeting.js"></script>
+<script src="../src/battle/damage.js"></script>
+<script src="../src/battle/engine.js"></script>
+<script src="../src/game/clock.js"></script>
+<script src="../src/game/game.js"></script>
+<script src="../src/ui/util.js"></script>
+<script src="save.js"></script>
+</body>
+</html>

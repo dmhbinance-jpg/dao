@@ -63,8 +63,10 @@
       research: { slots: cfg().research.slots.start, active: null },
       unlocks: { cave: false, forge: false },
       guide: { queue: [], seen: {} },
-      recruit: { day: null, today: 0, freeUsed: false },
-      pendingRecruit: null,
+      recruit: { freeUsed: false },
+      recruitChoice: null,   // 3 选 1 的候选（生成后存档，可以先关掉窗口再回来选；不能放弃重抽）
+      pendingRecruit: null,  // 名额已满时选中的人，等玩家决定遣散谁
+      quota: { extra: 0 },   // 名额扩建（预留，研究还没做）
       progress: { cleared: {}, lost: {} },
       auto: { on: cfg().auto.defaultOn, confirmed: {}, lastAttempt: null },
       idle: null,
@@ -88,9 +90,10 @@
   function migrate(s, now) {
     if (!s || typeof s !== 'object') return null;
     if (s.v === cfg().saveVersion) return isValidV2(s) ? s : null;
-    if (s.v === 3) return isValidV2(s) ? migrateV3(s) : null;
-    if (s.v === 2) return isValidV2(s) ? migrateV3(migrateV2(s)) : null;
-    if (s.v === 1 && s.hero && cfg().starters[s.hero.role]) return migrateV3(migrateV2(migrateV1(s, now)));
+    if (s.v === 4) return isValidV2(s) ? migrateV4(s) : null;
+    if (s.v === 3) return isValidV2(s) ? migrateV4(migrateV3(s)) : null;
+    if (s.v === 2) return isValidV2(s) ? migrateV4(migrateV3(migrateV2(s))) : null;
+    if (s.v === 1 && s.hero && cfg().starters[s.hero.role]) return migrateV4(migrateV3(migrateV2(migrateV1(s, now))));
     return null;
   }
 
@@ -136,7 +139,7 @@
 
   /** v3（阶段 2）→ v4：加灵矿、采集、装备；打完第二段的直接开放采集 / 锻造房并排队采集引导 */
   function migrateV3(s) {
-    s.v = cfg().saveVersion;
+    s.v = 4;
     s.ore = s.ore || 0;
     s.gather = s.gather || { ids: [], last: null };
     s.gearBag = s.gearBag || [];
@@ -146,7 +149,22 @@
     s.stats = Object.assign(emptyStats(), s.stats || {});
     for (const c of s.roster) c.equip = Object.assign(emptyEquip(), c.equip || {});
     if (s.pendingRecruit) s.pendingRecruit.equip = Object.assign(emptyEquip(), s.pendingRecruit.equip || {});
-    if (chapterDone(s, cfg().gather.unlockChapter)) unlockForge(s);
+    if (chapterDone(s, 'heifeng')) unlockForge(s);   // v4 的规则：第二段通关开放（v5 改到 1-8，见 migrateV4）
+    return s;
+  }
+
+  /**
+   * v4（阶段 3）→ v5（阶段 3.5）：招募改 3 选 1、固定价格（递增价格 / 每日计数直接丢弃）；名额与上阵位分开（名额 10，
+   * 超过的人不删，降到 10 以下之前不能招募）；采集 / 锻造房提前到 1-8；额外招募引导并进 1-8 的引导。
+   */
+  function migrateV4(s) {
+    s.v = cfg().saveVersion;
+    s.recruit = { freeUsed: !!(s.recruit && s.recruit.freeUsed) };
+    s.recruitChoice = s.recruitChoice || null;
+    s.quota = s.quota || { extra: 0 };
+    const drop = (id) => { s.guide.queue = s.guide.queue.filter((x) => x !== id); };
+    if (s.guide.queue.includes('extraRecruit')) { drop('extraRecruit'); s.guide.seen.extraRecruit = true; }
+    if (isCleared(s, cfg().gather.unlockStage)) unlockForge(s);
     return s;
   }
 
@@ -378,25 +396,17 @@
       if (!wasCleared) {
         const nx = stages()[stageIndex(o.stageId) + 1];
         unlocked = nx ? nx.id : null;
-        const ch = chapterOf(o.stageId);
-        if (ch && ch.stages[ch.stages.length - 1].id === o.stageId) {
-          queueGuide(save, 'done:' + ch.id);
-          if (ch.id === cfg().gather.unlockChapter) unlockForge(save);
-        }
-        if (o.stageId === cfg().cards.firstCardStage) grantFirstCard(save);
-        if (o.stageId === cfg().recruit.extraGuideStage) queueGuide(save, 'extraRecruit');
-        // 卡关补装备的引导：这关打过了就不用了
-        const gid = 'gearUp:' + o.stageId;
-        if (save.guide.queue.includes(gid)) { save.guide.queue = save.guide.queue.filter((x) => x !== gid); save.guide.seen[gid] = true; }
+        onFirstClear(save, o.stageId);
       }
     } else {
       save.progress.lost[o.stageId] = (save.progress.lost[o.stageId] || 0) + 1;
       // 第三段卡关：引导「该去打装备了」（等灵矿和金币够了才弹出，不够时不拦自动推关）
       const ch = chapterOf(o.stageId);
       if (o.frontier && ch && (cfg().forge.stuckGuideChapters || []).includes(ch.id) && save.guide.seen.forge) {
-        queueGuide(save, 'gearUp:' + o.stageId);
-        // 上阵位还能研究、又没在研究：顺带提示多开一个上阵位（只提示一次）
-        if (!save.research.active && researchNext(save) && pickSlotResearcher(save)) queueGuide(save, 'moreSlots');
+        // 上阵位还能研究、又没在研究：提示多开一个上阵位（每次研究完、再卡关时会再提示）
+        if (researchable(save)) queueGuide(save, 'moreSlots');
+        // 「该去打装备了」；这一章以上阵位为卡点（research.slots.stuckChapters）时，能研究就先研究，装备引导往后放
+        if (!slotsFirst(save, ch.id)) queueGuide(save, 'gearUp:' + o.stageId);
       }
     }
     // 洞府：在开放关第一次战败（或单人硬过）时开放
@@ -406,6 +416,17 @@
     }
     const drops = addDrops(save, o.drops || []);
     return { levelUps, expEach: each, gold: o.gold, firstClear: o.win && !wasCleared, unlocked, caveUnlocked, drops };
+  }
+
+  /** 某关第一次通关时开放的东西（章节通关引导、采集 / 锻造房、第一张卡）。存档工具「解锁关卡」也用它。 */
+  function onFirstClear(save, stageId) {
+    const ch = chapterOf(stageId);
+    if (ch && ch.stages[ch.stages.length - 1].id === stageId) queueGuide(save, 'done:' + ch.id);
+    if (stageId === cfg().gather.unlockStage) unlockForge(save);
+    if (stageId === cfg().cards.firstCardStage) grantFirstCard(save);
+    // 卡关补装备的引导：这关打过了就不用了
+    const gid = 'gearUp:' + stageId;
+    if (save.guide.queue.includes(gid)) { save.guide.queue = save.guide.queue.filter((x) => x !== gid); save.guide.seen[gid] = true; }
   }
 
   /** 战斗播放时长（毫秒）。按行动数估算，与播放器节奏一致。 */
@@ -424,15 +445,24 @@
     queueGuide(save, 'cave');
   }
 
-  function recruitCost(save, now) {
+  /** 名额：总人数上限（和上阵位无关）。扩建名额的研究预留在 save.quota.extra。 */
+  function rosterCap(save) { return cfg().roster.cap + ((save.quota && save.quota.extra) || 0); }
+  /** 招募价格：首抽免费，之后固定（不递增、不按日重置） */
+  function recruitCost(save) {
     const R = cfg().recruit;
     if (R.firstFree && !save.recruit.freeUsed) return 0;
-    const n = save.recruit.day === dayKey(now) ? save.recruit.today : 0;
-    return Math.round(R.dailyFirstCost * Math.pow(R.costMul, n));
+    return R.cost;
   }
-  function canRecruit(save, now) {
-    return save.unlocks.cave && !save.pendingRecruit && save.gold >= recruitCost(save, now);
+  /** 现在不能招募的原因（null = 可以）：locked 洞府没开 / choosing 还有候选没选 / pending 名额满了等决定 / full 名额已满 / gold 金币不够 */
+  function recruitBlock(save) {
+    if (!save.unlocks.cave) return 'locked';
+    if (save.recruitChoice) return 'choosing';
+    if (save.pendingRecruit) return 'pending';
+    if (save.roster.length >= rosterCap(save)) return 'full';
+    if (save.gold < recruitCost(save)) return 'gold';
+    return null;
   }
+  function canRecruit(save) { return !recruitBlock(save); }
 
   function weighted(rng, weights) {
     const entries = Object.entries(weights).filter(([, w]) => w > 0);
@@ -443,11 +473,30 @@
   }
 
   /** 随机生成一个招募角色（不改存档，除了招募种子） */
+  /** 生成一个招募角色（只用来测试 / 命令行造人；正式招募走 recruit 的 3 选 1）。每次用掉一个招募种子。 */
   function rollRecruit(save, opts) {
-    opts = opts || {};
-    const R = cfg().recruit;
     const rng = new DAO.RNG(DAO.hashSeed('recruit:' + save.gachaSeed));
     save.gachaSeed++;
+    const c = rollCandidate(save, rng, opts || {}, new Set(save.roster.map((x) => x.name)));
+    c.id = 'c' + save.nextId;
+    return c;
+  }
+  /** 用同一个招募种子生成 n 名候选（名字互不重复） */
+  function rollCandidates(save, n, opts) {
+    const rng = new DAO.RNG(DAO.hashSeed('recruit:' + save.gachaSeed));
+    save.gachaSeed++;
+    const used = new Set(save.roster.map((x) => x.name));
+    const out = [];
+    for (let i = 0; i < n; i++) {
+      const c = rollCandidate(save, rng, opts || {}, used);
+      c.id = 'cand' + (i + 1);
+      used.add(c.name);
+      out.push(c);
+    }
+    return out;
+  }
+  function rollCandidate(save, rng, opts, usedNames) {
+    const R = cfg().recruit;
     const role = opts.role || weighted(rng, R.roleWeights);
     const quality = opts.quality || weighted(rng, Object.fromEntries(Object.entries(R.qualities).map(([k, q]) => [k, q.weight])));
     const Q = R.qualities[quality];
@@ -469,8 +518,7 @@
       const [id] = rng.pick(cands);
       talents.push({ id, roll: Math.round(rng.next() * 100) / 100 });
     }
-    const used = new Set(save.roster.map((c) => c.name));
-    const freeNames = R.names.filter((n) => !used.has(n));
+    const freeNames = R.names.filter((n) => !usedNames.has(n));
     const name = freeNames.length ? rng.pick(freeNames) : rng.pick(R.names) + (save.nextId);
     const innates = R.innatePool[role].filter((id) => !(opts.excludeInnates || []).includes(id));
     const innate = rng.pick(innates.length ? innates : R.innatePool[role]);
@@ -483,7 +531,7 @@
       card = { id: rng.pick(liked.length ? liked : pool), roll: Math.round(rng.next() * 100) / 100 };
     }
     return {
-      id: 'c' + save.nextId, name, role, quality, origin: 'recruit',
+      id: null, name, role, quality, origin: 'recruit',
       level: Math.max(1, maxLevel(save) + R.levelOffset), exp: 0,
       base: clone(ref.base), growth,
       innate, branch: 0, talents, card,
@@ -492,35 +540,59 @@
   }
 
   /**
-   * 招募一次。名额满时返回 needsDecision，角色放进 pendingRecruit 等玩家决定。
-   * @returns { ok, char, cost, added, needsDecision, error }
+   * 招募一次（3 选 1）：付钱，用同一个招募种子生成 3 名候选，存进 save.recruitChoice 等玩家挑。
+   * 首抽免费，3 名候选都是与开局角色互补的定位、都不出「流影」。
+   * @param opts { reason }：'gather' = 为采集招募（默认选力资质最高的，选完直接去采集）
+   * @returns { ok, cost, choice, error }
    */
-  function recruit(save, now) {
+  function recruit(save, now, opts) {
+    opts = opts || {};
     const R = cfg().recruit;
-    if (!save.unlocks.cave) return { ok: false, error: 'locked' };
-    if (save.pendingRecruit) return { ok: false, error: 'pending' };
-    const cost = recruitCost(save, now);
-    if (save.gold < cost) return { ok: false, error: 'gold', cost };
+    const blk = recruitBlock(save);
+    if (blk) return { ok: false, error: blk, cost: recruitCost(save) };
+    const cost = recruitCost(save);
     const free = R.firstFree && !save.recruit.freeUsed;
-    const opts = {};
-    if (free && R.firstComplement) opts.role = starter(save).role === 'sword' ? 'mage' : 'sword';
-    if (free) opts.excludeInnates = R.firstExcludeInnates || [];
-    const c = rollRecruit(save, opts);
-    save.nextId++;
+    const ro = {};
+    if (free && R.firstComplement) ro.role = starter(save).role === 'sword' ? 'mage' : 'sword';
+    if (free) ro.excludeInnates = R.firstExcludeInnates || [];
+    const candidates = rollCandidates(save, R.candidates, ro);
     save.gold -= cost;
     if (free) save.recruit.freeUsed = true;
-    else {
-      const dk = dayKey(now);
-      if (save.recruit.day !== dk) { save.recruit.day = dk; save.recruit.today = 0; }
-      save.recruit.today++;
-    }
-    if (save.roster.length >= cfg().roster.cap) {
+    save.recruitChoice = { candidates, cost, free, reason: opts.reason || null, at: now || 0 };
+    return { ok: true, cost, choice: save.recruitChoice };
+  }
+  /** 候选的综合资质（成长相对开局同定位角色的平均倍率） */
+  function candidateScore(c) { return aptitude(c); }
+  /** 默认选谁：为采集招募选力资质（力成长）最高的，其余选综合资质最高的；并列取靠前的 */
+  function defaultChoice(save) {
+    const ch = save.recruitChoice;
+    if (!ch) return -1;
+    const key = ch.reason === 'gather' ? (c) => c.growth.str : candidateScore;
+    let best = 0;
+    ch.candidates.forEach((c, i) => { if (key(c) > key(ch.candidates[best]) + 1e-9) best = i; });
+    return best;
+  }
+  /**
+   * 选定一名候选，其余离开。名额已满时放进 pendingRecruit 等玩家决定遣散谁（沿用原流程）。
+   * 为采集招募的人选完直接去采集。
+   * @returns { ok, char, added, needsDecision, gathering }
+   */
+  function chooseRecruit(save, index, now) {
+    const ch = save.recruitChoice;
+    if (!ch || !ch.candidates[index]) return { ok: false };
+    const c = ch.candidates[index];
+    c.id = 'c' + save.nextId;
+    save.nextId++;
+    save.recruitChoice = null;
+    if (save.roster.length >= rosterCap(save)) {
       save.pendingRecruit = c;
-      return { ok: true, char: c, cost, added: false, needsDecision: true };
+      return { ok: true, char: c, added: false, needsDecision: true };
     }
     save.roster.push(c);
-    addToLineup(save, c.id); // 有空的上阵位就直接上阵
-    return { ok: true, char: c, cost, added: true };
+    const res = { ok: true, char: c, added: true };
+    if (ch.reason === 'gather' && save.unlocks.forge) res.gathering = startGather(save, c.id, now);
+    else addToLineup(save, c.id); // 有空的上阵位就直接上阵
+    return res;
   }
 
   function canDismiss(save, id) {
@@ -551,10 +623,20 @@
   }
 
   // ================= 洞府：研究（上阵位） =================
+  /** 现在上阵位最多能研究到几级：stageCap，或按已开放的章节放宽（chapterCaps：打到这一章时上限变成多少） */
+  function researchCap(save) {
+    const S = cfg().research.slots;
+    let cap = S.stageCap || S.max;
+    for (const [chId, c] of Object.entries(S.chapterCaps || {})) {
+      const idx = cfg().chapters.findIndex((ch) => ch.id === chId);
+      if (idx > 0 && chapterDone(save, cfg().chapters[idx - 1].id)) cap = Math.max(cap, c);
+    }
+    return Math.min(S.max, cap);
+  }
   function researchNext(save) {
     const S = cfg().research.slots;
     const lv = save.research.slots + 1;
-    return lv <= Math.min(S.max, S.stageCap || S.max) ? Object.assign({ level: lv }, S.levels[lv]) : null;
+    return lv <= researchCap(save) ? Object.assign({ level: lv }, S.levels[lv]) : null;
   }
   function researchDurationMs(save, charId) {
     const nx = researchNext(save);
@@ -672,15 +754,19 @@
    * @returns { mode: 'idle'|'recruit'|'research'|'lineup', charId?, cost? } 或 null
    */
   function gatherPlan(save, now) {
-    const idle = save.roster.filter((c) => status(save, c.id) === 'idle').sort((a, b) => b.growth.str - a.growth.str);
-    if (idle.length) return { mode: 'idle', charId: idle[0].id };
     const opts = gatherOptions(save, now);
     return opts[0] || null;
   }
   /** 没有闲置角色时的几种办法（引导里列出来让玩家选） */
+  /**
+   * 派人去采集的办法，按默认顺序：招募一位（3 选 1，选完直接去采集；名额和金币够时）→ 闲置里力资质最高的 →
+   * 把研究中的人调来 → 上阵里非开局角色中等级最低的。
+   */
   function gatherOptions(save, now) {
     const out = [];
-    if (save.unlocks.cave && !save.pendingRecruit && save.roster.length < cfg().roster.cap && save.gold >= recruitCost(save, now)) out.push({ mode: 'recruit', cost: recruitCost(save, now) });
+    if (canRecruit(save)) out.push({ mode: 'recruit', cost: recruitCost(save) });
+    const idle = save.roster.filter((c) => status(save, c.id) === 'idle').sort((a, b) => b.growth.str - a.growth.str);
+    if (idle.length) out.push({ mode: 'idle', charId: idle[0].id });
     if (save.research.active) out.push({ mode: 'research', charId: save.research.active.charId });
     if (save.lineup.length > 1) {
       const l = lineupChars(save).map((x) => x.char).filter((c) => c.origin !== 'starter')
@@ -695,9 +781,9 @@
     const info = {};
     let id = plan.charId;
     if (plan.mode === 'recruit') {
-      info.recruit = recruit(save, now);
-      if (!info.recruit.ok || !info.recruit.added) return info.recruit.ok ? info : null;
-      id = info.recruit.char.id;
+      // 3 选 1：先生成候选，玩家（或默认）选完后 chooseRecruit 会把人直接派去采集
+      info.recruit = recruit(save, now, { reason: 'gather' });
+      return info.recruit.ok ? info : null;
     } else if (plan.mode === 'research') {
       cancelResearch(save);
     }
@@ -794,8 +880,8 @@
     return item;
   }
   /**
-   * 下一件该做的装备（活动条提示 / 标准玩家用）：按上阵顺序 × 武器、胸甲、戒指，
-   * 先补到「中品」（forge.hintTier），都到了再往上品走。背包里有更好的就直接穿（不花钱）。
+   * 下一件该做的装备（活动条提示 / 卡关引导 / 标准玩家用）：一档一档往上补——先让每个上阵角色的武器、胸甲、戒指
+   * 都有下品，再都换中品，再换上品；同一档按上阵顺序 × 武器、胸甲、戒指。背包里有更好的就直接穿（不花钱）。
    * @returns { kind: 'equip'|'forge', charId, slot, tier, stat?, gearId?, cost?, affordable } 或 null
    */
   function nextUpgrade(save) {
@@ -803,7 +889,7 @@
     const F = cfg().forge;
     const top = F.costs.length - 1;
     const chars = lineupChars(save).map((x) => x.char);
-    for (const target of [F.hintTier, top]) {
+    for (let target = 0; target <= top; target++) {
       for (const c of chars) {
         for (const slot of F.slots) {
           const cur = c.equip[slot];
@@ -851,6 +937,10 @@
     queueGuide(save, 'gather');
   }
 
+  /** 现在能不能研究下一个上阵位（还有级、没在研究、有人可派；不管金币够不够） */
+  function researchable(save) { return !save.research.active && !!researchNext(save) && !!pickSlotResearcher(save); }
+  /** 这一章卡关时先研究上阵位（还能研究的话）再补装备 */
+  function slotsFirst(save, chId) { return (cfg().research.slots.stuckChapters || []).includes(chId) && researchable(save); }
   /** 卡关时研究上阵位找谁去：闲置里智力最高的，其次采集中智力最高的（采集中的人被调走，采集停下） */
   function pickSlotResearcher(save) {
     const ints = (c) => charUnit(c).base.int;
@@ -997,17 +1087,18 @@
   }
   /** 引导确认按钮当前能否执行（例如研究金币不够） */
   function guideBlock(save, id) {
-    if (id === 'extraRecruit') {
-      if (save.pendingRecruit) return 'pending';
-      return save.gold >= recruitCost(save, guideNow) ? null : 'gold';
+    if (id === 'gather') {
+      if (save.recruitChoice || save.pendingRecruit) return 'choosing';
+      return save.gather.ids.length || gatherPlan(save, guideNow) ? null : 'nochar';
     }
-    if (id === 'gather') return save.gather.ids.length || gatherPlan(save, guideNow) ? null : 'nochar';
     if (id === 'moreSlots') {
       if (save.research.active || !researchNext(save)) return null;   // 已经在研究 / 研究满了：确认后直接关掉
       const rid = pickSlotResearcher(save);
       return rid ? researchBlock(save, rid) : 'nochar';
     }
     if (id.startsWith('gearUp:')) {
+      const ch = chapterOf(id.slice(7));
+      if (ch && slotsFirst(save, ch.id)) return 'research';
       const u = nextUpgrade(save);
       return u && u.affordable ? null : 'ore';
     }
@@ -1047,7 +1138,7 @@
     if (guideBlock(save, id)) return { ok: false, error: guideBlock(save, id) };
     const info = { ok: true };
     if (id === 'cave') {
-      if (!save.recruit.freeUsed) info.recruit = recruit(save, now);
+      if (!save.recruit.freeUsed && !save.recruitChoice) info.recruit = recruit(save, now);
       queueGuide(save, 'research');
     } else if (id === 'research') {
       if (!save.research.active && save.research.slots < 2) {
@@ -1062,8 +1153,6 @@
       const target = save.roster.find((c) => c.origin === 'starter' && canUseCard(c, cid) && !c.card) ||
         save.roster.find((c) => canUseCard(c, cid) && !c.card);
       if (target && (save.bag[cid] || 0) > 0) info.insert = insertCard(save, target.id, cid);
-    } else if (id === 'extraRecruit') {
-      info.recruit = recruit(save, now);
     } else if (id === 'gather') {
       if (!save.gather.ids.length) {
         const r = doGatherPlan(save, opts.plan || gatherPlan(save, now), now);
@@ -1090,7 +1179,7 @@
     if (id.startsWith('gearUp:')) {
       // 卡关补装备的引导可以反复出现：这关还没过，就留在队列里，下次灵矿和金币够了再弹
       if (!isCleared(save, id.slice(7))) save.guide.queue.push(id);
-    } else save.guide.seen[id] = true;
+    } else if (id !== 'moreSlots') save.guide.seen[id] = true;   // moreSlots 也可以再出现（下一级上阵位）
     return info;
   }
 
@@ -1105,6 +1194,7 @@
    */
   function autoDecide(save) {
     const A = cfg().auto;
+    if (save.recruitChoice) return { type: 'wait', reason: 'recruitChoice' };
     if (save.pendingRecruit) return { type: 'wait', reason: 'recruitDecision' };
     const g = currentGuide(save);
     if (g && A.stopAtGuides && !guideBlock(save, g)) return { type: 'wait', reason: 'guide', guide: g };
@@ -1130,8 +1220,9 @@
     setRow, swapRows, applyDefaultRows, showFormation,
     stages, stageById, stageIndex, isCleared, isUnlocked, nextStage, chapterCleared, bestClearedStage, stageExp, stageGold, lineups, lineupSig,
     runBattle, applyOutcome, durationMs, backgroundBattleMs,
-    recruitCost, canRecruit, rollRecruit, recruit, canDismiss, dismiss, resolvePending,
-    researchNext, researchDurationMs, researchBlock, startResearch, tickResearch, pickResearcher,
+    recruitCost, canRecruit, recruitBlock, rosterCap, rollRecruit, rollCandidates, recruit, candidateScore, defaultChoice, chooseRecruit,
+    canDismiss, dismiss, resolvePending, onFirstClear, unlockCave, unlockForge,
+    researchCap, researchNext, researchDurationMs, researchBlock, startResearch, tickResearch, pickResearcher,
     queueGuide, currentGuide, guideBlock, ackGuide,
     chapters, chapterOf, chapterDone,
     cardDef, cardTags, canUseCard, cardValue, bagCount, insertPreview, insertCard, cardActions, autoHandleCards, dismissCardPrompt, dropKind, grantFirstCard,

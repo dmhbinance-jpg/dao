@@ -20,7 +20,7 @@
   const DAO = (root.DAO = root.DAO || {});
 
   DAO.CONFIG.game = {
-    saveVersion: 4,
+    saveVersion: 5,
 
     // ===== 开局角色 =====
     starters: {
@@ -46,7 +46,7 @@
 
     // ===== 角色与上阵 =====
     roster: {
-      cap: 12,                                     // 角色名额上限（设计文档第 6 节：起步 12）
+      cap: 10,                                     // 名额：总人数上限（上阵、替补、采集、研究都算），设计文档第 6 节起步 10；和上阵位无关
       defaultRow: { sword: 'front', mage: 'back' }, // 上阵 2 人以上时的默认站位
     },
 
@@ -155,26 +155,27 @@
       { id: '2-7', name: '林深', note: '五只妖兽',
         enemies: [{ enemyId: 'blackwolf', level: 15, row: 'front' }, { enemyId: 'boar', level: 15, row: 'front' }, { enemyId: 'blackwolf', level: 15, row: 'front' }, { enemyId: 'fox', level: 15, row: 'back' }, { enemyId: 'fox', level: 15, row: 'back' }] },
       { id: '2-8', name: '黑风狐王', note: '首领：躲在后排给前排加甲', boss: true,
-        enemies: [{ enemyId: 'stoneboar', level: 13, row: 'front' }, { enemyId: 'stoneboar', level: 13, row: 'front' }, { enemyId: 'foxking', level: 15, row: 'back' }] },
+        enemies: [{ enemyId: 'stoneboar', level: 16, row: 'front' }, { enemyId: 'stoneboar', level: 16, row: 'front' }, { enemyId: 'foxking', level: 18, row: 'back' }] },
     ] },
-    // 第三段：敌人皮厚、伤害高（铁背熊、赤狐），只靠等级追得很慢，打一套中档白装才顺。
+    // 第三段：卡点是第 4 个上阵位（阶段 3.5 两种方案对比后的默认，见 docs/STAGE3_5_HANDOFF.md）。
+    // 敌人皮厚、伤害高（铁背熊、赤狐），3 个人要高出好几级才打得过；打完第二段后上阵位可以研究到第 4 级。
     { id: 'tieyan', name: '铁岩谷', desc: '引导关第三段 · 该打装备了', stages: [
       { id: '3-1', name: '谷口', note: '两只铁背熊挡路',
-        enemies: [{ enemyId: 'ironbear', level: 18, row: 'front' }, { enemyId: 'ironbear', level: 18, row: 'front' }, { enemyId: 'redfox', level: 18, row: 'back' }] },
+        enemies: [{ enemyId: 'ironbear', level: 22, row: 'front' }, { enemyId: 'ironbear', level: 22, row: 'front' }, { enemyId: 'redfox', level: 22, row: 'back' }] },
       { id: '3-2', name: '赤狐坡', note: '后排两只赤狐',
-        enemies: [{ enemyId: 'blackwolf', level: 19, row: 'front' }, { enemyId: 'ironbear', level: 19, row: 'front' }, { enemyId: 'redfox', level: 19, row: 'back' }, { enemyId: 'redfox', level: 19, row: 'back' }] },
+        enemies: [{ enemyId: 'blackwolf', level: 23, row: 'front' }, { enemyId: 'ironbear', level: 23, row: 'front' }, { enemyId: 'redfox', level: 23, row: 'back' }, { enemyId: 'redfox', level: 23, row: 'back' }] },
       { id: '3-3', name: '熊穴', note: '该去打装备了',
-        enemies: [{ enemyId: 'ironbear', level: 19, row: 'front' }, { enemyId: 'ironbear', level: 19, row: 'front' }, { enemyId: 'redfox', level: 19, row: 'back' }, { enemyId: 'redfox', level: 19, row: 'back' }] },
+        enemies: [{ enemyId: 'ironbear', level: 23, row: 'front' }, { enemyId: 'ironbear', level: 23, row: 'front' }, { enemyId: 'redfox', level: 23, row: 'back' }, { enemyId: 'redfox', level: 23, row: 'back' }] },
       { id: '3-4', name: '乱石', note: '五只妖兽',
-        enemies: [{ enemyId: 'stoneboar', level: 19, row: 'front' }, { enemyId: 'ironbear', level: 19, row: 'front' }, { enemyId: 'blackwolf', level: 19, row: 'front' }, { enemyId: 'redfox', level: 19, row: 'back' }, { enemyId: 'redfox', level: 19, row: 'back' }] },
+        enemies: [{ enemyId: 'stoneboar', level: 23, row: 'front' }, { enemyId: 'ironbear', level: 23, row: 'front' }, { enemyId: 'blackwolf', level: 23, row: 'front' }, { enemyId: 'redfox', level: 23, row: 'back' }, { enemyId: 'redfox', level: 23, row: 'back' }] },
       { id: '3-5', name: '赤焰林', note: '三只赤狐',
-        enemies: [{ enemyId: 'ironbear', level: 20, row: 'front' }, { enemyId: 'blackwolf', level: 20, row: 'front' }, { enemyId: 'redfox', level: 20, row: 'back' }, { enemyId: 'redfox', level: 20, row: 'back' }, { enemyId: 'redfox', level: 20, row: 'back' }] },
+        enemies: [{ enemyId: 'ironbear', level: 24, row: 'front' }, { enemyId: 'blackwolf', level: 24, row: 'front' }, { enemyId: 'redfox', level: 24, row: 'back' }, { enemyId: 'redfox', level: 24, row: 'back' }, { enemyId: 'redfox', level: 24, row: 'back' }] },
       { id: '3-6', name: '熊群', note: '三只铁背熊',
-        enemies: [{ enemyId: 'ironbear', level: 20, row: 'front' }, { enemyId: 'ironbear', level: 20, row: 'front' }, { enemyId: 'ironbear', level: 20, row: 'front' }, { enemyId: 'redfox', level: 20, row: 'back' }] },
+        enemies: [{ enemyId: 'ironbear', level: 24, row: 'front' }, { enemyId: 'ironbear', level: 24, row: 'front' }, { enemyId: 'ironbear', level: 24, row: 'front' }, { enemyId: 'redfox', level: 24, row: 'back' }] },
       { id: '3-7', name: '铁岩', note: '五只妖兽',
-        enemies: [{ enemyId: 'ironbear', level: 21, row: 'front' }, { enemyId: 'ironbear', level: 21, row: 'front' }, { enemyId: 'blackwolf', level: 21, row: 'front' }, { enemyId: 'redfox', level: 21, row: 'back' }, { enemyId: 'redfox', level: 21, row: 'back' }] },
+        enemies: [{ enemyId: 'ironbear', level: 25, row: 'front' }, { enemyId: 'ironbear', level: 25, row: 'front' }, { enemyId: 'blackwolf', level: 25, row: 'front' }, { enemyId: 'redfox', level: 25, row: 'back' }, { enemyId: 'redfox', level: 25, row: 'back' }] },
       { id: '3-8', name: '铁背熊王', note: '首领：皮糙肉厚', boss: true,
-        enemies: [{ enemyId: 'bearking', level: 21, row: 'front' }, { enemyId: 'ironbear', level: 20, row: 'front' }, { enemyId: 'redfox', level: 20, row: 'back' }, { enemyId: 'redfox', level: 20, row: 'back' }] },
+        enemies: [{ enemyId: 'bearking', level: 25, row: 'front' }, { enemyId: 'ironbear', level: 24, row: 'front' }, { enemyId: 'redfox', level: 24, row: 'back' }, { enemyId: 'redfox', level: 24, row: 'back' }] },
     ] }],
 
     // ===== 技能卡（设计文档第 8 节） =====
@@ -214,8 +215,8 @@
       unlockStage: '1-4',    // 在这一关第一次战败时开放洞府（招募 + 研究）
       firstFree: true,       // 新手首抽免费
       firstComplement: true, // 首抽保底出与开局角色互补的定位
-      dailyFirstCost: 100,   // 之后每日首次 100 金
-      costMul: 1.5,          // 每次 ×1.5，次日重置
+      cost: 100,             // 每次招募固定价格（不递增、不按日重置；设计文档第 11 节）
+      candidates: 3,         // 3 选 1：每次招募出 3 名候选，挑 1 名留下，其余离开
       levelOffset: -1,       // 招募角色等级 = 当前最高等级角色 + levelOffset（最低 1 级）
       roles: ['sword', 'mage'],
       roleWeights: { sword: 1, mage: 1 },
@@ -230,8 +231,7 @@
       tierWeights: { stat: 60, tag: 30, trigger: 10 },
       excludeTalents: ['renxin'], // 治疗类天赋：第一版没有治疗技能
       innatePool: { sword: ['jianqizhan', 'liuying'], mage: ['lianzhuhuo', 'chiyan'] },
-      firstExcludeInnates: ['liuying'], // 首抽不出「流影」（穿透、优先打后排），保证「剑修打不到后排」的教学成立
-      extraGuideStage: '2-3',           // 第二段这一关首次通关后，引导一次额外招募（花金币）
+      firstExcludeInnates: ['liuying'], // 首抽 3 名候选都不出「流影」（穿透、优先打后排），保证「剑修打不到后排」的教学成立
       names: ['云渺', '沈烛', '陆青', '顾长川', '萧寒', '林岫', '白鹭', '江离', '谢沉', '苏晚', '叶澄', '温衡',
         '韩樵', '裴雪', '楚歌', '秦岳', '方岩', '宋清', '许溪', '唐苇', '段云', '凌霄', '易水', '洛川'],
     },
@@ -241,16 +241,26 @@
       slots: {
         name: '上阵位',
         start: 1, max: 5,
-        stageCap: 3,           // 当前阶段最多研究到第几级（阶段 2：第 3 级可选，不是通关必需）
+        stageCap: 3,           // 最多研究到第几级（第 3 级在第二段可选，不是通关必需）
+        chapterCaps: { tieyan: 4 },   // 打到这一章时上限放宽：第三段的卡点是第 4 个上阵位
+        stuckChapters: ['tieyan'],    // 这些章节卡关时先引导研究上阵位，研究不了再引导补装备
         // 升到第 N 级（= N 个上阵位）的花费与时长（秒）
         levels: {
-          2: { gold: 20, sec: 60 },
-          3: { gold: 3500, sec: 600 },  // 阶段 2 的主要金币出口（可选）
-          4: { gold: 6000, sec: 600 },
-          5: { gold: 15000, sec: 1800 },
+          // 阶段 3.5：时长统一缩短为原来的 10%（原 60 / 600 / 600 / 1800 秒）
+          2: { gold: 20, sec: 6 },
+          3: { gold: 3500, sec: 60 },   // 第二段的主要金币出口（可选）
+          4: { gold: 6000, sec: 60 },
+          5: { gold: 15000, sec: 180 },
         },
         intSpeedPerPoint: 0.01, // 研究者每点智力让研究快 1%（时长 ÷ (1 + 智 × 0.01)）
       },
+    },
+
+    // ===== 名额扩建（预留：研究还没做，存档里 quota.extra 恒为 0） =====
+    quota: {
+      research: false,       // 扩建名额的研究（未开放）
+      perLevel: 1,           // 以后每级 +1 名额
+      maxExtra: 0,
     },
 
     // ===== 自动推关 =====
@@ -263,9 +273,9 @@
     // ===== 采集（设计文档第 10 节：不分班次，按秒连续产出） =====
     // 采集中的角色不能上阵、不能研究、不拿经验。离线不计算：关掉页面期间的产出不补。
     gather: {
-      unlockChapter: 'heifeng',  // 这一段通关后开放采集和锻造房，并在第三段开头引导
+      unlockStage: '1-8',        // 这一关首次通关时开放采集和锻造房，引导：招募（3 选 1）→ 新人没有上阵位 → 去采集 → 打第一件装备
       oreName: '灵矿',
-      perSec: 1.0,               // 资质系数 1.0 的角色每秒产出
+      perSec: 0.7,               // 资质系数 1.0 的角色每秒产出（阶段 3.5：1.0 → 0.7，采集提前后灵矿不再过剩）
       refStrGrowth: 3.0,         // 资质系数 = 力成长 ÷ 3.0（开局剑修 = 1.0）
       minFactor: 0.5,            // 资质系数下限（法修力成长低，也不至于完全没用）
     },
@@ -277,18 +287,17 @@
       tierNames: ['下品', '中品', '上品'],
       // 每个部位三档：词条固定，档位越高数值越高、花费越多。
       recipes: {
-        weapon: { art: 'gear.weapon', name: '白铁兵刃', desc: '加攻击（物攻、法攻同时加）', tiers: [{ atk: 12 }, { atk: 24 }, { atk: 40 }] },
-        chest: { art: 'gear.chest', name: '白铁甲', desc: '加护甲和气血', tiers: [{ armor: 12, hp: 150 }, { armor: 24, hp: 300 }, { armor: 40, hp: 500 }] },
-        ring: { art: 'gear.ring', name: '白玉戒', desc: '加一项三维（打造时选力 / 敏 / 智）', stats: ['str', 'agi', 'int'], tiers: [{ value: 6 }, { value: 12 }, { value: 20 }] },
+        weapon: { art: 'gear.weapon', name: '白铁兵刃', desc: '加攻击（物攻、法攻同时加）', tiers: [{ atk: 16 }, { atk: 26 }, { atk: 40 }] },
+        chest: { art: 'gear.chest', name: '白铁甲', desc: '加护甲和气血', tiers: [{ armor: 16, hp: 200 }, { armor: 26, hp: 320 }, { armor: 40, hp: 500 }] },
+        ring: { art: 'gear.ring', name: '白玉戒', desc: '加一项三维（打造时选力 / 敏 / 智）', stats: ['str', 'agi', 'int'], tiers: [{ value: 8 }, { value: 13 }, { value: 20 }] },
       },
       costs: [
-        { ore: 20, gold: 500 },
-        { ore: 50, gold: 1300 },
-        { ore: 120, gold: 3000 },
+        { ore: 40, gold: 100 },
+        { ore: 220, gold: 600 },
+        { ore: 500, gold: 1200 },
       ],
       guideSlot: 'weapon',       // 锻造引导打的第一件
       guideTier: 0,
-      hintTier: 1,               // 活动条提示按「中品」判断够不够
       stuckGuideChapters: ['tieyan'], // 这些章节在最新关第一次战败时排队「该去打装备了」引导（灵矿和金币够了才弹出）
     },
 
@@ -321,4 +330,7 @@
   // 播放节奏（毫秒，1× 速度）。V0 播放器、战斗回放和后台计时共用。
   // 回放节奏（1× 速度下每一拍的毫秒数，按根事件类型）；只影响播放，不影响战斗结果
   DAO.CONFIG.playback = { battleStart: 400, roundStart: 250, action: 700, battleEnd: 0 };
+
+  // 调试：时间倍率（1 / 2 / 5 / 10）。作用于研究倒计时、采集产出、挂机间隔、战斗播放；不改战斗结果。在配置网站里改，刷新游戏生效。
+  DAO.CONFIG.debug = { timeScale: 1 };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

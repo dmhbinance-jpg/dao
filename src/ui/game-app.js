@@ -26,24 +26,28 @@
   const forgeSel = { slot: 'weapon', tier: 1, stat: null, target: null };  // 锻造房当前选择（target = 打造后给谁穿，'' = 放进背包）
   let hintSig = '';
   let lastPersist = 0;
+  // 游戏时钟：所有按时间走的规则（研究、采集、挂机、战斗播放）都从这里取 now；倍率 = CONFIG.debug.timeScale
+  let clock = DAO.GameClock.create({ scale: DAO.CONFIG.debug.timeScale });
+  const gnow = () => clock.now();
   const els = {};
 
   // ================= 存档 =================
   function load() {
-    const now = Date.now();
-    let s = G.migrate(store.get('save', null), now);
+    let s = G.migrate(store.get('save', null), Date.now());
     if (!s) {
       const old = legacyStore.get('save', null);
       if (old) {
-        s = G.migrate(old, now);
+        s = G.migrate(old, Date.now());
         if (s) toast(`已从阶段 0 存档迁移：${s.roster[0].name} Lv${s.roster[0].level}`);
       }
     }
     save = s;
+    // 游戏时间从存档里记的接着走（老存档没有就从现在起步）
+    clock = DAO.GameClock.create({ scale: DAO.CONFIG.debug.timeScale, saved: save && save.clock });
     // 采集不补离线：重新打开页面时从现在开始算
-    if (save) { G.resumeGather(save, now); persist(); }
+    if (save) { G.resumeGather(save, gnow()); persist(); }
   }
-  function persist() { if (save) store.set('save', save); }
+  function persist() { if (save) { save.clock = clock.save(); store.set('save', save); } }
 
   // ================= 小工具 =================
   /** 角色头像位：资源清单里有图就用图，没有（目前都是占位）退回定位色块 */
@@ -147,7 +151,8 @@
     let picked = null;
     const nameInput = h('input', { id: 'hero-name', type: 'text', maxlength: 8, placeholder: '道号（可不填）', class: 'name-input' });
     const goBtn = h('button', { class: 'primary big-btn', disabled: true, onclick: () => {
-      save = G.newSave(picked, nameInput.value, Date.now());
+      clock = DAO.GameClock.create({ scale: DAO.CONFIG.debug.timeScale });
+      save = G.newSave(picked, nameInput.value, gnow());
       persist();
       tab = 'stages';
       render();
@@ -186,11 +191,12 @@
   function renderHeader() {
     const autoOn = save.auto.on;
     const showBag = save.cardsInfo.firstGot || G.bagCount(save) > 0;
-    const sig = [tab, autoOn, save.unlocks.cave, save.unlocks.forge, save.roster.length, showBag, G.bagCount(save)].join('|');
+    const sig = [tab, autoOn, save.unlocks.cave, save.unlocks.forge, save.roster.length, showBag, G.bagCount(save), G.rosterCap(save)].join('|');
     // 只有结构变化时才重建（避免挂机时按钮被反复替换）；金币、上阵位就地更新
     if (sig === headerSig && els.goldVal) {
       els.goldVal.textContent = UI.num(save.gold);
       els.slotVal.textContent = `${save.lineup.length}/${G.slots(save)}`;
+      if (els.quotaVal) els.quotaVal.textContent = `${save.roster.length}/${G.rosterCap(save)}`;
       if (els.oreVal) els.oreVal.textContent = oreText(save.ore);
       return;
     }
@@ -199,7 +205,10 @@
     els.chips.appendChild(h('span', { class: 'chip-stat', title: '金币' }, h('small', null, '金币'), (els.goldVal = h('b', null, UI.num(save.gold)))));
     els.oreVal = null;
     if (save.unlocks.forge) els.chips.appendChild(h('span', { class: 'chip-stat ore', title: '灵矿（洞府采集）' }, h('small', null, '灵矿'), (els.oreVal = h('b', null, oreText(save.ore)))));
-    els.chips.appendChild(h('span', { class: 'chip-stat', title: '上阵位（研究解锁）' }, h('small', null, '上阵位'), (els.slotVal = h('b', null, `${save.lineup.length}/${G.slots(save)}`))));
+    els.chips.appendChild(h('span', { class: 'chip-stat', title: '上阵：同时打怪的人数 / 已解锁的上阵位（研究解锁）' }, h('small', null, '上阵'), (els.slotVal = h('b', null, `${save.lineup.length}/${G.slots(save)}`))));
+    els.quotaVal = null;
+    if (save.unlocks.cave) els.chips.appendChild(h('span', { class: 'chip-stat', title: '名额：总人数 / 上限（上阵、替补、采集、研究的人都算）' }, h('small', null, '名额'), (els.quotaVal = h('b', null, `${save.roster.length}/${G.rosterCap(save)}`))));
+    if (clock.scale !== 1) els.chips.appendChild(h('span', { class: 'chip-stat warn', title: '时间倍率（配置网站 debug.timeScale）：研究、采集、挂机、战斗播放都按这个倍率走' }, h('small', null, '时间'), h('b', null, '×' + clock.scale)));
     els.chips.appendChild(h('button', { class: 'switch' + (autoOn ? ' on' : ''), role: 'switch', 'aria-checked': autoOn ? 'true' : 'false', title: '自动推关：胜了打下一关，输了退回挂机，升级后再挑战', onclick: toggleAuto },
       h('span', { class: 'knob' }), '自动推关'));
     UI.clear(els.nav);
@@ -235,8 +244,8 @@
     } else if (a.type === 'wait') {
       left.appendChild(h('span', { class: 'act-dot wait' }));
       left.appendChild(h('span', null, waitText(a)));
-      if (a.reason === 'guide' || a.reason === 'recruitDecision' || a.reason === 'boss' || a.reason === 'cards') {
-        right.appendChild(h('button', { class: 'mini primary', onclick: () => { modalClosedFor = null; renderModal(); } }, a.reason === 'boss' ? '准备挑战' : '查看'));
+      if (a.reason === 'guide' || a.reason === 'recruitDecision' || a.reason === 'recruitChoice' || a.reason === 'boss' || a.reason === 'cards') {
+        right.appendChild(h('button', { class: 'mini primary', onclick: () => { modalClosedFor = null; renderModal(); } }, a.reason === 'boss' ? '准备挑战' : a.reason === 'recruitChoice' ? '去选人' : '查看'));
       }
     } else {
       left.appendChild(h('span', { class: 'act-dot' }));
@@ -247,7 +256,7 @@
     if (ra) {
       const c = G.getChar(save, ra.charId);
       const total = ra.endsAt - ra.startedAt;
-      const left2 = ra.endsAt - Date.now();
+      const left2 = ra.endsAt - gnow();
       right.prepend(h('div', { class: 'act-research', title: '研究进度' },
         h('small', null, `研究 上阵位→${ra.level} · ${c ? c.name : ''} · 剩 `, (els.researchLeft = h('span', null, fmtTime(left2)))),
         h('div', { class: 'act-bar small' }, (els.researchFill = h('div', { class: 'act-fill research', style: { width: Math.min(100, 100 * (1 - left2 / total)) + '%' } })))));
@@ -277,6 +286,7 @@
     if (a.reason === 'boss') { const st = G.stageById(a.stageId); return `首领关 ${st.id} ${st.name}：等你确认后挑战`; }
     if (a.reason === 'guide') return a.guide && a.guide.startsWith('gearUp:') ? '卡关了：灵矿够补装备，等你确认' : '有新内容开放，等你确认';
     if (a.reason === 'recruitDecision') return '角色名额已满，等你决定新角色的去留';
+    if (a.reason === 'recruitChoice') return '招募：等你从 3 名候选里挑一位';
     if (a.reason === 'cards') return '背包里有能用的技能卡，等你处理';
     return '等待中';
   }
@@ -343,6 +353,7 @@
     view = UI.createBattleView(vc, {
       store,
       sideNames: { A: '我方', B: '敌方' },
+      timeScale: () => clock.scale,
       onEnd: () => onPushEnd(),
     });
     return box;
@@ -370,19 +381,24 @@
   // ================= 洞府页 =================
   function cavePage() {
     const wrap = h('div', { class: 'cave-grid' });
-    const now = Date.now();
+    const now = gnow();
     // ---- 招募 ----
     const cost = G.recruitCost(save, now);
     const free = cost === 0;
     const R = DAO.CONFIG.game.recruit;
+    const blk = G.recruitBlock(save);
+    const why = { choosing: '先把上一次的候选选完', pending: '名额已满，先决定遣散谁', full: `名额已满（${save.roster.length}/${G.rosterCap(save)}），遣散到 ${G.rosterCap(save) - 1} 人以下才能再招`, gold: `金币不够（需要 ${cost}）` }[blk];
     const rc = h('div', { class: 'card cave-card' },
-      h('h2', null, '招募'),
-      h('p', { class: 'muted' }, free
-        ? `新手首抽免费，保底出${G.starter(save).role === 'sword' ? '法修' : '剑修'}（与开局角色互补）。`
-        : `每日首次 ${R.dailyFirstCost} 金，之后每次 ×${R.costMul}，次日重置。今天已招 ${save.recruit.day === G.dayKey(now) ? save.recruit.today : 0} 次。`),
+      h('h2', null, '招募 · 3 选 1'),
+      h('p', { class: 'muted' }, (free
+        ? `新手首抽免费，3 名候选都是${G.starter(save).role === 'sword' ? '法修' : '剑修'}（与开局角色互补）。`
+        : `每次 ${R.cost} 金，价格固定、不涨价。`) + '每次出 3 名候选，挑 1 名留下，其余离开；候选会一直等你选，不能放弃重抽。'),
       h('div', { class: 'recruit-row' },
-        h('button', { class: 'primary big-btn', disabled: !G.canRecruit(save, now), onclick: doRecruit }, free ? '免费招募' : `招募 · ${cost} 金`),
-        h('span', { class: 'muted' }, `名额 ${save.roster.length}/${DAO.CONFIG.game.roster.cap} · 新角色等级 = 最高等级 ${R.levelOffset}`)),
+        save.recruitChoice
+          ? h('button', { class: 'primary big-btn', onclick: () => { modalClosedFor = null; renderModal(); } }, '去选人（3 选 1）')
+          : h('button', { class: 'primary big-btn', disabled: !!blk, title: why || '', onclick: doRecruit }, free ? '免费招募' : `招募 · ${cost} 金`),
+        h('span', { class: 'muted' }, `名额 ${save.roster.length}/${G.rosterCap(save)}（上阵、替补、采集、研究都算）· 新角色等级 = 最高等级 ${R.levelOffset}`)),
+      why && blk !== 'choosing' ? h('p', { class: 'warn-text' }, why) : null,
       h('details', { class: 'odds' }, h('summary', null, '品质概率'),
         h('div', { class: 'odds-list' }, Object.entries(R.qualities).map(([k, q]) => h('div', null, qualityBadge(k),
           h('span', null, `${q.weight}% · 成长 ×${q.growthMul[0]}–${q.growthMul[1]} · 天赋 ${q.talents[0] === q.talents[1] ? q.talents[0] : q.talents[0] + '–' + q.talents[1]} 条${q.trigger ? ' · 可出触发型' : ''}`))))));
@@ -405,9 +421,9 @@
       rs.appendChild(h('div', { class: 'research-active' },
         h('span', null, `${c.name} 正在研究第 ${ra.level} 个上阵位，`, h('b', null, `剩 ${fmtTime(ra.endsAt - now)}`))));
     } else if (!nx) {
-      rs.appendChild(h('p', null, G.slots(save) >= S.max ? '上阵位已经研究到最高。' : `本阶段上阵位最多研究到 ${S.stageCap} 个，后面的等以后开放。`));
+      rs.appendChild(h('p', null, G.slots(save) >= S.max ? '上阵位已经研究到最高。' : `现在上阵位最多研究到 ${G.researchCap(save)} 个，后面的等以后开放。`));
     } else {
-      rs.appendChild(h('div', { class: 'research-next' }, `下一级：第 ${nx.level} 个上阵位 · ${nx.gold} 金 · 基础 ${fmtTime(nx.sec * 1000)}`, nx.level >= 3 ? h('small', { class: 'muted' }, '（可选：多一个人上阵，需要第三个角色顶上研究的空缺）') : null));
+      rs.appendChild(h('div', { class: 'research-next' }, `下一级：第 ${nx.level} 个上阵位 · ${nx.gold} 金 · 基础 ${fmtTime(nx.sec * 1000)}`, nx.level === 3 ? h('small', { class: 'muted' }, '（可选：多一个人上阵）') : nx.level === 4 ? h('small', { class: 'muted' }, '（第三段的卡点：铁岩谷按 4 人上阵设计）') : null));
       const list = h('div', { class: 'researcher-list' });
       for (const c of save.roster) {
         const blk = G.researchBlock(save, c.id);
@@ -438,7 +454,7 @@
     for (const c of chars) {
       const stt = G.status(save, c.id);
       let btn;
-      if (stt === 'gather') btn = h('button', { class: 'mini', onclick: () => { G.stopGather(save, c.id, Date.now()); toast(`${c.name} 召回${G.inLineup(save, c.id) ? '，已上阵' : ''}`); changed(); step(); } }, '召回');
+      if (stt === 'gather') btn = h('button', { class: 'mini', onclick: () => { G.stopGather(save, c.id, gnow()); toast(`${c.name} 召回${G.inLineup(save, c.id) ? '，已上阵' : ''}`); changed(); step(); } }, '召回');
       else {
         const blk = G.gatherBlock(save, c.id);
         const why = { research: '研究中', lastFighter: '唯一上阵的角色' }[blk];
@@ -560,6 +576,7 @@
   function gearSlotsView(c) {
     if (!save.unlocks.forge || !c.equip) return null;
     const mine = save.roster.includes(c);
+    if (!mine) return null;   // 招募候选 / 待定新人没有装备
     return h('div', { class: 'gear-slots' }, DAO.CONFIG.game.forge.slots.map((slot) => {
       const it = c.equip[slot];
       return h('div', { class: 'gear-slot' + (it ? '' : ' empty') },
@@ -580,14 +597,14 @@
     } else if (stt === 'lineup') {
       box.appendChild(h('button', { class: 'mini', disabled: save.lineup.length <= 1, onclick: () => { G.removeFromLineup(save, c.id); changed(); } }, '下阵'));
     } else if (stt === 'gather') {
-      box.appendChild(h('button', { class: 'mini primary', onclick: () => { G.stopGather(save, c.id, Date.now()); changed(); step(); } }, '召回'));
+      box.appendChild(h('button', { class: 'mini primary', onclick: () => { G.stopGather(save, c.id, gnow()); changed(); step(); } }, '召回'));
     } else {
       box.appendChild(h('span', { class: 'muted' }, '研究中'));
     }
     if (c.origin !== 'starter' || save.roster.length > 1) {
       const btn = h('button', { class: 'mini ghost', disabled: !G.canDismiss(save, c.id), onclick: () => {
         if (!btn.dataset.armed) { btn.dataset.armed = '1'; btn.textContent = '再点一次确认遣散'; btn.classList.add('danger'); setTimeout(() => { if (btn.isConnected) { delete btn.dataset.armed; btn.textContent = '遣散'; btn.classList.remove('danger'); } }, 3000); return; }
-        G.dismiss(save, c.id, Date.now()); changed();
+        G.dismiss(save, c.id, gnow()); changed();
       } }, '遣散');
       box.appendChild(btn);
     }
@@ -744,7 +761,7 @@
     cave: () => {
       const other = G.starter(save).role === 'sword' ? '法修' : '剑修';
       const why = G.starter(save).role === 'sword' ? '石甲猪挡在前面，后排的狐妖一直放火，剑修够不着。' : '石甲猪皮糙肉厚、撞得又狠，法修一个人顶不住。';
-      return { title: '一个人不够', body: [why, `洞府开门了：可以招募同伴，还能研究第 2 个上阵位。新手首抽免费，保底出${other}。`], btn: '免费招募' };
+      return { title: '一个人不够', body: [why, `洞府开门了：可以招募同伴，还能研究第 2 个上阵位。新手首抽免费：出 3 名候选，都是${other}，挑一位留下。`], btn: '免费招募（3 选 1）' };
     },
     research: () => {
       const rid = G.pickResearcher(save);
@@ -764,18 +781,18 @@
     },
     formation: () => ({ title: '布阵', body: ['现在两人上阵，可以分前后排了。', '剑修近战，顶在前排挨打；法修远程，站后排输出。敌方近战只能打前排，前排倒下后排才会暴露。', '默认已按剑前法后排好，可以在「角色」页调换。'], btn: '就这样' }),
     'done:qingshi': () => ({ title: '青石山第一段通关', body: ['首领掉了一张技能卡。', '第二段「黑风林」已开放：小怪会掉技能卡，可以重掷、换卡。'], btn: '好' }),
-    'done:heifeng': () => ({ title: '黑风林第二段通关', body: ['第三段「铁岩谷」已开放：铁背熊皮糙肉厚、赤狐伤害高，只靠升级追得很慢。', '洞府新开了「采集」和「锻造房」：派人采灵矿，用灵矿 + 金币打造装备。'], btn: '好' }),
+    'done:heifeng': () => ({ title: '黑风林第二段通关', body: ['第三段「铁岩谷」已开放：铁背熊皮糙肉厚、赤狐伤害高，3 个人硬拼很吃力。', '上阵位现在可以研究到第 4 个了（洞府 → 研究）。多一个人上阵，这一段就顺得多。'], btn: '好' }),
     'done:tieyan': () => ({ title: '铁岩谷第三段通关', body: ['阶段 3 的内容到这里为止。', '可以继续采集、把装备换成上品，或者挂机升级。'], btn: '好' }),
     gather: () => {
-      const plan = G.gatherPlan(save, Date.now());
-      const c = plan && plan.charId && G.getChar(save, plan.charId);
-      const rate = c ? G.gatherRate(c).toFixed(2) : '';
+      const plan = G.gatherPlan(save, gnow());
+      const opts = save.gather.ids.length ? null : G.gatherOptions(save, gnow());
       const first = G.forgeCost(DAO.CONFIG.game.forge.guideTier);
-      const body = ['铁岩谷的妖兽靠等级硬拼很吃力，该打装备了。装备要用灵矿，灵矿要派人去采：采集中的人不能上阵、不能研究，按秒产出，力资质越高越快。'];
+      const body = ['洞府开了「采集」和「锻造房」：灵矿 + 金币能打造装备，第一段的首领山魈就得靠装备过。灵矿要派人去采——采集中的人不能上阵、不能研究，按秒产出，力资质越高越快。'];
       if (save.gather.ids.length) body.push('已经有人在采集了。');
-      else if (plan && plan.mode === 'idle') body.push(`派闲置的 ${c.name} 去采集（${rate}/秒）。攒够 ${first.ore} 灵矿就能打第一件装备。`);
-      else body.push('现在没有闲置的角色。可以招募一位去采集，或者把研究中的人调过来（研究会取消、退还金币），也可以从上阵里撤一个人。');
-      return { title: '采集灵矿', body, btn: plan && plan.mode === 'idle' ? `派 ${c.name} 去采集` : plan ? planLabel(plan) : '没有能派的人', disabled: !plan && !save.gather.ids.length, plans: !save.gather.ids.length && plan && plan.mode !== 'idle' ? G.gatherOptions(save, Date.now()) : null };
+      else if (plan && plan.mode === 'recruit') body.push(`上阵位已经满了，招一位新人（${plan.cost} 金，3 选 1，默认挑力资质最高的）——他没有上阵位，正好去采灵矿。攒够 ${first.ore} 灵矿就能打第一件装备。`);
+      else if (plan && plan.mode === 'idle') body.push(`派闲置的 ${G.getChar(save, plan.charId).name} 去采集（${G.gatherRate(G.getChar(save, plan.charId)).toFixed(2)}/秒）。攒够 ${first.ore} 灵矿就能打第一件装备。`);
+      else if (plan) body.push('现在招不了人（名额或金币不够）、也没有闲人。可以把研究中的人调过来（研究会取消、退还金币），或者从上阵里撤一个人。');
+      return { title: '采集灵矿', body, btn: plan ? planLabel(plan) : '没有能派的人', disabled: !plan && !save.gather.ids.length, plans: opts && opts.length ? opts : null };
     },
     forge: () => {
       const F = DAO.CONFIG.game.forge;
@@ -793,7 +810,8 @@
     },
   };
   function planLabel(p) {
-    if (p.mode === 'recruit') return `招募一位去采集 · ${p.cost} 金`;
+    if (p.mode === 'recruit') return `招募一位去采集（3 选 1）· ${p.cost} 金`;
+    if (p.mode === 'idle') return `派闲置的 ${G.getChar(save, p.charId).name} 去采集`;
     if (p.mode === 'research') return `把研究中的 ${G.getChar(save, p.charId).name} 调去采集`;
     if (p.mode === 'lineup') return `让上阵的 ${G.getChar(save, p.charId).name} 去采集`;
     return '派去采集';
@@ -827,19 +845,6 @@
         btn: `插给 ${st.name}`,
       };
     },
-    extraRecruit: () => {
-      const cost = G.recruitCost(save, Date.now());
-      const blk = G.guideBlock(save, 'extraRecruit');
-      return {
-        title: '多一位道友',
-        body: [
-          `现在招到的新角色会自带一张已插好的技能卡。招募一次 ${cost} 金。`,
-          '多一个人可以去研究第 3 个上阵位（可选，比较贵），也能在别人研究时顶上。',
-          blk === 'gold' ? `金币不够（需要 ${cost}），先挂机攒一攒。` : '',
-        ].filter(Boolean),
-        btn: `招募 · ${cost} 金`, disabled: !!blk,
-      };
-    },
   };
   Object.assign(GUIDES, GUIDES_END);
 
@@ -860,9 +865,19 @@
     let g = G.currentGuide(save);
     // 阶段 3 的引导在条件不满足时（灵矿不够等）不弹窗，等够了再弹；活动条上会显示进度
     if (g && G.guideBlock(save, g) && (g === 'forge' || g === 'gather' || g === 'moreSlots' || g.startsWith('gearUp:'))) g = null;
-    if (save.pendingRecruit) {
+    if (save.recruitChoice && modalClosedFor !== 'choice') {
+      const ch = save.recruitChoice;
+      const di = G.defaultChoice(save);
+      const why = ch.reason === 'gather' ? '这次是为采集招人：默认挑力资质最高的（采集更快），选完直接去采灵矿。' : '默认挑综合资质（三项成长的平均）最高的。';
+      spec = { title: ch.free ? '首抽 · 3 选 1' : '招募 · 3 选 1', body: [`挑一位留下，其余两位离开。${why}可以先「稍后再选」，候选会一直留着，但不能放弃重抽。`], btn: `选 ${ch.candidates[di].name}（默认）`, wide: true };
+      onOk = () => doChoose(di);
+      extra = h('div', { class: 'choice-grid' }, ch.candidates.map((c, i) => h('div', { class: 'choice' + (i === di ? ' def' : '') },
+        charCard(c, { compact: true }),
+        h('div', { class: 'choice-meta' }, h('span', null, `资质 ×${G.aptitude(c).toFixed(2)}`), h('span', null, `采集 ${G.gatherRate(c).toFixed(2)}/秒（系数 ${G.gatherFactor(c).toFixed(2)}）`)),
+        h('button', { class: i === di ? 'primary' : '', onclick: () => { els.modal.hidden = true; doChoose(i); } }, `选 ${c.name}`))));
+    } else if (save.pendingRecruit) {
       const pc = save.pendingRecruit;
-      spec = { title: '角色名额已满', body: [`招到了 ${pc.name}，但名额只有 ${DAO.CONFIG.game.roster.cap} 个。选一个现有角色遣散，或者遣散新人。`], btn: `遣散 ${pc.name}` };
+      spec = { title: '角色名额已满', body: [`选中了 ${pc.name}，但名额只有 ${G.rosterCap(save)} 个。选一个现有角色遣散，或者遣散新人。`], btn: `遣散 ${pc.name}` };
       onOk = () => { G.resolvePending(save, false); changed(); step(); };
       extra = h('div', null, charCard(pc, { compact: true }),
         h('div', { class: 'swap-list' }, save.roster.filter((c) => G.canDismiss(save, c.id)).map((c) =>
@@ -871,12 +886,12 @@
       spec = g.startsWith('gearUp:') ? gearUpGuide(g) : GUIDES[g] ? GUIDES[g]() : { title: g, body: [], btn: '好' };
       if (G.guideBlock(save, g)) spec.disabled = true;
       const ackWith = (plan) => {
-        const info = G.ackGuide(save, g, Date.now(), plan ? { plan } : undefined);
+        const info = G.ackGuide(save, g, gnow(), plan ? { plan } : undefined);
         if (!info.ok) { toast('现在做不了：' + (info.error || ''), 'bad'); return; }
         if (info.charId && g === 'gather') toast(`${G.getChar(save, info.charId).name} 开始采集灵矿`, 'good');
         if (info.item) toast(`打造了 ${G.gearName(info.item)}${info.charId ? `，${G.getChar(save, info.charId).name} 已穿上` : ''}`, 'good');
         if (info.upgrades && info.upgrades.length) toast(`装备补上了 ${info.upgrades.length} 件`, 'good');
-        if (info.recruit && info.recruit.char) { lastRecruit = info.recruit.char; toast(`招到 ${info.recruit.char.name}（${G.qualityName(info.recruit.char.quality)}${DAO.ROLE_NAMES[info.recruit.char.role]}）`, 'good'); }
+        if (info.recruit && info.recruit.ok) modalClosedFor = null;   // 弹 3 选 1
         if (info.researcher) toast(`${G.getChar(save, info.researcher).name} 开始研究上阵位`);
         changed();
         step();
@@ -885,8 +900,8 @@
         extra = h('div', { class: 'swap-list' }, spec.plans.slice(1).map((p) => h('button', { class: 'mini', onclick: () => { els.modal.hidden = true; ackWith(p); } }, planLabel(p))));
       }
       onOk = g === 'gather' || g === 'moreSlots' || g === 'forge' || g.startsWith('gearUp:') ? () => ackWith(spec.plans ? spec.plans[0] : null) : () => {
-        const info = G.ackGuide(save, g, Date.now());
-        if (info.recruit && info.recruit.char) { lastRecruit = info.recruit.char; toast(`招到 ${info.recruit.char.name}（${G.qualityName(info.recruit.char.quality)}${DAO.ROLE_NAMES[info.recruit.char.role]}）`, 'good'); }
+        const info = G.ackGuide(save, g, gnow());
+        if (info.recruit && info.recruit.ok) modalClosedFor = null;   // 弹 3 选 1
         if (info.researcher) toast(`${G.getChar(save, info.researcher).name} 开始研究上阵位`);
         changed();
         if (info.insert) { const c = G.starter(save); showModal(Object.assign(insertResultSpec(c, info.insert), { buttons: [{ label: '好', primary: true, onClick: () => step() }] })); return; }
@@ -915,35 +930,45 @@
       onOk = () => { G.confirmBoss(save, st.id); persist(); step(); };
     }
     if (!spec) return;
-    const closeKey = save.pendingRecruit ? null : (g && modalClosedFor !== g ? g : activity.reason === 'cards' ? 'cards' : ('boss:' + activity.stageId));
+    const closeKey = save.recruitChoice && modalClosedFor !== 'choice' ? 'choice' : save.pendingRecruit ? null : (g && modalClosedFor !== g ? g : activity.reason === 'cards' ? 'cards' : ('boss:' + activity.stageId));
     layer.hidden = false;
-    layer.appendChild(h('div', { class: 'modal', role: 'dialog', 'aria-modal': 'true' },
+    layer.appendChild(h('div', { class: 'modal' + (spec.wide ? ' wide' : ''), role: 'dialog', 'aria-modal': 'true' },
       h('h2', null, spec.title),
       spec.body.map((p) => h('p', null, p)),
       extra,
       h('div', { class: 'modal-btns' },
-        closeKey ? h('button', { onclick: () => { modalClosedFor = closeKey; if (closeKey === 'cards') { G.dismissCardPrompt(save); persist(); step(); } renderModal(); } }, '稍后') : null,
+        closeKey ? h('button', { onclick: () => { modalClosedFor = closeKey; if (closeKey === 'cards') { G.dismissCardPrompt(save); persist(); step(); } renderModal(); } }, closeKey === 'choice' ? '稍后再选' : '稍后') : null,
         h('button', { class: 'primary', disabled: !!spec.disabled, onclick: () => { layer.hidden = true; onOk(); } }, spec.btn))));
   }
 
   // ================= 动作 =================
   function doRecruit() {
-    const r = G.recruit(save, Date.now());
-    if (!r.ok) { toast(r.error === 'gold' ? `金币不够（需要 ${r.cost}）` : '现在不能招募', 'bad'); return; }
-    lastRecruit = r.char;
-    toast(`招到 ${r.char.name}（${G.qualityName(r.char.quality)}${DAO.ROLE_NAMES[r.char.role]}）${r.added && G.inLineup(save, r.char.id) ? '，已上阵' : ''}`, 'good');
+    const r = G.recruit(save, gnow());
+    if (!r.ok) { toast({ gold: `金币不够（需要 ${r.cost}）`, full: '名额已满', choosing: '先把上一次的候选选完', pending: '名额已满，先决定遣散谁' }[r.error] || '现在不能招募', 'bad'); return; }
+    modalClosedFor = null;
+    changed();
+    step();
+  }
+  /** 3 选 1：选定第 i 名候选 */
+  function doChoose(i) {
+    const res = G.chooseRecruit(save, i, gnow());
+    if (!res.ok) return;
+    lastRecruit = res.char;
+    if (res.needsDecision) toast(`选了 ${res.char.name}，但名额已满：决定遣散谁`, 'bad');
+    else toast(`${res.char.name}（${G.qualityName(res.char.quality)}${DAO.ROLE_NAMES[res.char.role]}）加入${res.gathering ? '，去采灵矿了' : G.inLineup(save, res.char.id) ? '，已上阵' : ''}`, 'good');
+    modalClosedFor = null;
     changed();
     step();
   }
   function doResearch(id) {
-    if (!G.startResearch(save, id, Date.now())) return;
+    if (!G.startResearch(save, id, gnow())) return;
     toast(`${G.getChar(save, id).name} 开始研究上阵位`);
     changed();
     step();
   }
   function doGather(id) {
     const c = G.getChar(save, id);
-    if (!G.startGather(save, id, Date.now())) { toast('现在不能派去采集', 'bad'); return; }
+    if (!G.startGather(save, id, gnow())) { toast('现在不能派去采集', 'bad'); return; }
     toast(`${c.name} 开始采集灵矿（${G.gatherRate(c).toFixed(2)}/秒）`);
     changed();
     step();
@@ -1000,7 +1025,7 @@
     settlePending();
     stopFarm();
     const o = G.runBattle(save, stageId, { record: true });
-    pending = { outcome: o, startedAt: Date.now() };
+    pending = { outcome: o, startedAt: gnow() };
     lastSettle = null;
     activity = { type: 'push', stageId };
     render();
@@ -1010,7 +1035,7 @@
     if (!pending) return null;
     const p = pending;
     pending = null;
-    const r = G.applyOutcome(save, p.outcome, { kind: 'push', elapsedMs: Date.now() - p.startedAt });
+    const r = G.applyOutcome(save, p.outcome, { kind: 'push', elapsedMs: gnow() - p.startedAt });
     lastSettle = { outcome: p.outcome, r };
     levelToast(r.levelUps);
     dropToast(r.drops);
@@ -1026,7 +1051,7 @@
     renderActivity();
     refreshStageList();
     renderModal();
-    if (save.auto.on) autoTimer = setTimeout(step, 1200);
+    if (save.auto.on) autoTimer = setTimeout(step, clock.realMs(1200));
     else if (save.idle) startFarm(save.idle.stageId);
   }
 
@@ -1039,10 +1064,10 @@
     activity = { type: 'farm', stageId };
     const o = G.runBattle(save, stageId);
     farm.outcome = o;
-    farm.startedAt = Date.now();
+    farm.startedAt = gnow();
     farm.dur = G.backgroundBattleMs(o);
-    farm.tick = setInterval(() => { if (els.farmFill) els.farmFill.style.width = Math.min(100, 100 * (Date.now() - farm.startedAt) / farm.dur) + '%'; }, 150);
-    farm.timer = setTimeout(finishFarm, farm.dur);
+    farm.tick = setInterval(() => { if (els.farmFill) els.farmFill.style.width = Math.min(100, 100 * (gnow() - farm.startedAt) / farm.dur) + '%'; }, 150);
+    farm.timer = setTimeout(finishFarm, clock.realMs(farm.dur));
     renderActivity();
     refreshStageList();
   }
@@ -1077,7 +1102,7 @@
   function step() {
     clearTimeout(autoTimer);
     if (!save) return;
-    G.tickResearch(save, Date.now());
+    G.tickResearch(save, gnow());
     if (pending) return; // 推关回放中，播完再说
     if (!save.auto.on) {
       if (save.idle && G.isCleared(save, save.idle.stageId)) { if (activity.type !== 'farm') startFarm(save.idle.stageId); }
@@ -1101,7 +1126,7 @@
   /** 每秒：研究倒计时、研究完成 */
   function tick() {
     if (!save) return;
-    const now = Date.now();
+    const now = gnow();
     if (save.unlocks.forge) {
       G.tickGather(save, now);
       const t = oreText(save.ore);
@@ -1126,8 +1151,8 @@
     }
     const ra = save.research.active;
     if (ra && els.researchLeft) {
-      els.researchLeft.textContent = fmtTime(ra.endsAt - Date.now());
-      if (els.researchFill) els.researchFill.style.width = Math.min(100, 100 * (1 - (ra.endsAt - Date.now()) / (ra.endsAt - ra.startedAt))) + '%';
+      els.researchLeft.textContent = fmtTime(ra.endsAt - gnow());
+      if (els.researchFill) els.researchFill.style.width = Math.min(100, 100 * (1 - (ra.endsAt - gnow()) / (ra.endsAt - ra.startedAt))) + '%';
     }
   }
 
@@ -1217,6 +1242,19 @@
     render();
     if (save) step();
     setInterval(tick, 1000);
+    // 另一个标签页（例如配置网站的存档工具，或另开的游戏页）改了存档：重新读入
+    window.addEventListener('storage', (e) => {
+      if (e.key !== 'dao.save') return;
+      clearTimeout(autoTimer);
+      stopFarm();
+      if (view) view.stop();
+      pending = null; lastSettle = null; activity = { type: 'none' }; farm.session = null; adhoc = null; headerSig = '';
+      load();
+      if (!save) { resetGame(); return; }
+      toast('存档在别处被修改，已重新读入');
+      render();
+      step();
+    });
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);

@@ -12,9 +12,8 @@
 'use strict';
 const fs = require('fs');
 const path = require('path');
-const DAO = require('../src/node.js');
-const G = DAO.Game;
-const C = DAO.CONFIG.game;
+const P = require('./lib/play.js');
+const { DAO, G, C } = P;
 
 const PLAYERS = Number(process.argv[2] || 300);
 const ROLES = ['sword', 'mage'];
@@ -25,13 +24,13 @@ const pct = (x) => Math.round(x * 100) + '%';
 const q = (arr, p) => { const a = arr.filter((x) => x != null).sort((x, y) => x - y); return a.length ? a[Math.min(a.length - 1, Math.floor(p * a.length))] : null; };
 const mean = (arr) => arr.reduce((a, b) => a + b, 0) / Math.max(1, arr.length);
 const min = (ms) => (ms == null ? '—' : (ms / 60000).toFixed(1));
-const T0 = new Date(2026, 9, 24, 9, 0, 0).getTime(); // 模拟时钟起点（本地上午 9 点，一整天内不会跨日）
+const T0 = P.T0;
 const checks = [];
 
 const t0 = Date.now();
 log('# 阶段 1 验收报告');
 log();
-log(`> 由 \`node cli/stage1.js ${PLAYERS}\` 生成。数值为占位，配置见 \`src/config/game.js\`。`);
+log(P.header('stage1.js', String(PLAYERS)).join('\n'));
 log();
 
 // ---------------- 工具：构造固定阵容 ----------------
@@ -77,10 +76,12 @@ log();
   const b = JSON.stringify(G.runBattle(s, '1-7', { record: true }).result.timeline);
   const s1 = G.newSave('mage', 'x', T0), s2 = G.newSave('mage', 'x', T0);
   s1.gachaSeed = s2.gachaSeed = 77;
-  const r1 = JSON.stringify(G.rollRecruit(s1)), r2 = JSON.stringify(G.rollRecruit(s2));
+  s1.unlocks.cave = s2.unlocks.cave = true;
+  G.recruit(s1, T0); G.recruit(s2, T0);
+  const r1 = JSON.stringify(s1.recruitChoice), r2 = JSON.stringify(s2.recruitChoice);
   const ok = a === b && r1 === r2;
-  checks.push(['同种子结果一致（战斗、招募）', ok]);
-  log(`- 同种子战斗结果一致、同招募种子出同一个角色：**${ok ? '是' : '否'}**`);
+  checks.push(['同种子结果一致（战斗、招募 3 名候选）', ok]);
+  log(`- 同种子战斗结果一致、同招募种子出同样的 3 名候选：**${ok ? '是' : '否'}**`);
 
   const v1 = { v: 1, createdAt: T0, seedCounter: 37, hero: { name: '老玩家', role: 'sword', level: 6, exp: 12, base: { str: 14, agi: 10, int: 4 }, growth: { str: 3, agi: 2, int: 0.8 }, innate: 'jianqizhan', branch: 0, talents: [{ id: 'li', roll: 0.5 }] }, progress: { cleared: { '1-1': 3, '1-2': 1, '1-3': 2, '1-4': 1 } }, idle: { stageId: '1-3' }, stats: { battles: 30, wins: 25, kills: 50, expTotal: 400, playMs: 600000 } };
   const m = G.migrate(JSON.parse(JSON.stringify(v1)), T0);
@@ -148,55 +149,22 @@ log();
 
 // ---------------- 3. 模拟玩家 ----------------
 /**
- * 一个玩家：按自动推关策略走；引导处等 guideMs 后确认；研究按模拟时钟推进。
- * watchOverhead=true：推关战斗按 2× 观看并加阅读点击时间；false：全自动，只在引导处点确认。
- * solo=true：从不招募（测单人硬过 1-4 要多少级）。
+ * 一个玩家（共用的 cli/lib/play.js）：只看第一段。solo=true 的对照玩家从不招募。
+ * 返回字段沿用原来的：gateLv / gateAt（1-4 通关）、clearLv / clearAt（第一段通关）、idleMs、total、recruit（首抽选中的人）。
  */
 function simulate(role, idx, opts) {
-  const E = C.estimate;
-  let now = T0;
-  const save = G.newSave(role, 'sim', now);
-  save.seedCounter = 100000 + idx * 7919;
-  save.gachaSeed = 1 + idx * 104729;
-  const res = { role, done: false, gateLv: null, gateAt: null, clearLv: null, clearAt: null, pushMs: 0, idleMs: 0, guideMs: 0, recruit: null, battles: 0 };
-  let guard = 0;
-  while (guard++ < 4000) {
-    G.tickResearch(save, now);
-    if (save.guide.queue.length && opts.solo) { save.guide.queue = []; } // 单人对照：忽略引导，不招募
-    const d = G.autoDecide(save);
-    if (d.type === 'wait') {
-      if (d.reason === 'guide') {
-        now += E.guideMs; res.guideMs += E.guideMs;
-        const info = G.ackGuide(save, d.guide, now);
-        if (info.recruit && info.recruit.char) res.recruit = info.recruit.char;
-        if (d.guide.startsWith('done:')) break;
-        continue;
-      }
-      if (d.reason === 'boss') { now += E.guideMs; res.guideMs += E.guideMs; G.confirmBoss(save, d.stageId); continue; }
-      break;
-    }
-    const isPush = d.type === 'challenge';
-    const o = G.runBattle(save, d.stageId);
-    const ms = isPush ? G.durationMs(o.result, E.watchSpeed) + (opts.watchOverhead ? E.overheadMs : 0) : G.backgroundBattleMs(o);
-    now += ms;
-    if (isPush) res.pushMs += ms; else res.idleMs += ms;
-    res.battles++;
-    const lvBefore = G.maxLevel(save);
-    G.applyOutcome(save, o, { kind: isPush ? 'push' : 'idle', elapsedMs: ms });
-    if (o.win && o.stageId === gate && res.gateAt == null) { res.gateLv = lvBefore; res.gateAt = now - T0; }
-    if (G.chapterDone(save, 'qingshi') && res.clearAt == null) { res.clearLv = G.starter(save).level; res.clearAt = now - T0; res.done = true; if (opts.stopAtClear) break; }
-    if (now - T0 > 90 * 60000) break;
-  }
-  res.total = now - T0;
-  res.save = save;
-  return res;
+  const r = P.simulate(role, idx, { kind: opts.watchOverhead ? 'std' : 'auto', until: 'qingshi', seeds: P.SEEDS.s1, solo: opts.solo, stopAtClear: true, maxMinutes: 90 });
+  const seg = r.segs.qingshi || {};
+  const done = !!(r.segs.qingshi && !seg.unfinished);
+  return { role, done, gateLv: r.gateLv, gateAt: r.gateAt, clearLv: done ? seg.lv1 : null, clearAt: done ? seg.dur : null, idleMs: seg.idle || 0, pushMs: seg.push || 0,
+    total: seg.dur || r.total, recruit: r.firstRecruit, clears: r.clears, save: r.save };
 }
 
 log('## 3. 模拟玩家：从选角到打完第一段');
 log();
-log(`策略：自动推关（胜了打下一关；最新关输了退回最高已通关的关卡挂机；上阵角色升级后再挑战一次）。引导处等 ${C.estimate.guideMs / 1000} 秒后确认（首抽免费招募 → 研究第 2 个上阵位 → 布阵 → 首领确认）。推关战斗按 ${C.estimate.watchSpeed}× 计时；挂机按 ${C.idle.speed}× 计时、每场间隔 ${C.idle.gapMs / 1000} 秒；研究按真实时间推进。每种开局 ${PLAYERS} 名玩家。`);
+log(`策略见 cli/lib/play.js：自动推关（胜了打下一关；最新关输了退回最高已通关的关卡挂机；上阵角色升级后再挑战一次）。引导、3 选 1、首领确认各等 ${C.estimate.guideMs / 1000} 秒后确认（首抽免费 3 选 1 → 研究第 2 个上阵位 → 布阵 → 1-8 招人去采集 → 第一件装备 → 首领确认）。3 选 1 选默认（综合资质最高；为采集招募选力资质最高）。推关战斗按 ${C.estimate.watchSpeed}× 计时；挂机按 ${C.idle.speed}× 计时、每场间隔 ${C.idle.gapMs / 1000} 秒；研究按真实时间推进。每种开局 ${PLAYERS} 名玩家。`);
 log();
-log('- **标准玩家**：推关战斗每场另加 ' + C.estimate.overheadMs / 1000 + ' 秒阅读点击');
+log('- **标准玩家**：推关战斗每场另加 ' + C.estimate.overheadMs / 1000 + ' 秒阅读点击；1-8 开放采集后再招 1 人去采集（共 2 人采集），灵矿金币够就按推荐打装备');
 log('- **全自动玩家**：完全不操作，只在引导处点确认');
 log();
 const sims = {};
@@ -242,31 +210,11 @@ log();
 log('各关首次通关的累计用时（标准玩家，分钟，中位）：');
 log();
 {
-  // 重跑少量玩家记录每关时间点
+  // 各关首次通关的时间点（标准玩家）
   const per = {};
   for (const role of ROLES) {
     per[role] = {};
-    for (let i = 0; i < Math.min(100, PLAYERS); i++) {
-      const E = C.estimate;
-      let now = T0;
-      const save = G.newSave(role, 'p', now);
-      save.seedCounter = 100000 + i * 7919; save.gachaSeed = 1 + i * 104729;
-      let guard = 0;
-      while (guard++ < 4000 && !G.chapterDone(save, 'qingshi')) {
-        G.tickResearch(save, now);
-        const d = G.autoDecide(save);
-        if (d.type === 'wait') {
-          now += E.guideMs;
-          if (d.reason === 'guide') G.ackGuide(save, d.guide, now); else if (d.reason === 'boss') G.confirmBoss(save, d.stageId); else break;
-          continue;
-        }
-        const o = G.runBattle(save, d.stageId);
-        now += d.type === 'challenge' ? G.durationMs(o.result, E.watchSpeed) + E.overheadMs : G.backgroundBattleMs(o);
-        const was = G.isCleared(save, o.stageId);
-        G.applyOutcome(save, o, {});
-        if (o.win && !was) (per[role][o.stageId] = per[role][o.stageId] || []).push({ t: now - T0, lv: G.maxLevel(save) });
-      }
-    }
+    for (const x of sims.std[role]) for (const [id, c] of Object.entries(x.clears || {})) (per[role][id] = per[role][id] || []).push({ t: c.t, lv: c.lv });
   }
   log('| 关卡 | ' + ROLES.map((r) => `${RN[r]} 用时 | ${RN[r]} 最高等级`).join(' | ') + ' |');
   log('|---' + '|---|---'.repeat(ROLES.length) + '|');

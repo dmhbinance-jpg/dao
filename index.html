@@ -10,7 +10,7 @@
 </head>
 <body class="s0 s1">
 <header class="top s1-top">
-  <div class="brand"><span class="seal">道</span><div><b>青石山</b><small>阶段 3 · 采集灵矿 + 锻造装备 · 数值均为占位</small></div></div>
+  <div class="brand"><span class="seal">道</span><div><b>青石山</b><small>阶段 3.5 · 3 选 1 招募 · 名额 10 · 数值均为占位</small></div></div>
   <div class="s1-chips" id="chips"></div>
   <nav class="s1-nav" id="nav"></nav>
   <div class="s1-tools">
@@ -34,6 +34,9 @@
 <script src="src/config/characters.js"></script>
 <script src="src/config/game.js"></script>
 <script src="src/config/assets.js"></script>
+<!-- 调参覆盖（配置网站写入）→ 合并进 DAO.CONFIG -->
+<script src="src/config/tuning.js"></script>
+<script src="src/config/apply-tuning.js"></script>
 <!-- 地基：事件、数据模型 -->
 <script src="src/core/events.js"></script>
 <script src="src/core/model.js"></script>
@@ -45,6 +48,7 @@
 <script src="src/battle/log.js"></script>
 <script src="src/battle/simulate.js"></script>
 <!-- 游戏规则（纯逻辑） -->
+<script src="src/game/clock.js"></script>
 <script src="src/game/game.js"></script>
 <!-- UI -->
 <script src="src/ui/util.js"></script>

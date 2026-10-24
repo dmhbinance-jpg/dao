@@ -5,6 +5,7 @@
  *   const view = UI.createBattleView(container, { controls: [...额外按钮], sideNames: {A,B}, onEnd(timeline), renderer? })
  *   view.play(result.timeline)   // record=true 跑出来的时间线（也接受整个 result）
  * opts.renderer(els, opts) 可以换成别的渲染器工厂（默认 UI.createTextRenderer）。
+ * opts.timeScale：数字或返回数字的函数，时间倍率（CONFIG.debug.timeScale）；实际播放速度 = 按钮速度 × 时间倍率。
  */
 (function (root) {
   'use strict';
@@ -20,6 +21,7 @@
     let replay = null, tl = null;
     let speed = store.get('speed', 1);
     let pauseBtn, statusEl;
+    const ts = () => (typeof opts.timeScale === 'function' ? opts.timeScale() : opts.timeScale) || 1;
 
     // ---------- 骨架 ----------
     UI.clear(container);
@@ -42,7 +44,7 @@
       speed = s;
       store.set('speed', s);
       for (const k in speedBtns) speedBtns[k].classList.toggle('on', Number(k) === s);
-      if (replay) replay.setSpeed(s);
+      if (replay) replay.setSpeed(s * ts());
     }
 
     function play(x) {
@@ -50,7 +52,7 @@
       tl = x.timeline || x;
       if (!tl || !tl.events) throw new Error('回放需要 record=true 跑出来的时间线');
       const renderer = makeRenderer(els, { sideNames: opts.sideNames });
-      replay = DAO.Replay.create(tl, renderer, { speed, onEnd: (t) => { pauseBtn.textContent = '暂停'; if (opts.onEnd) opts.onEnd(t); } });
+      replay = DAO.Replay.create(tl, renderer, { speed: speed * ts(), onEnd: (t) => { pauseBtn.textContent = '暂停'; if (opts.onEnd) opts.onEnd(t); } });
       pauseBtn.textContent = '暂停';
       replay.play();
     }
