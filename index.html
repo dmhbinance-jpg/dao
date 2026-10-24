@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>道 · V0 战斗模拟器</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="src/ui/style.css">
+</head>
+<body>
+<header class="top">
+  <div class="brand"><span class="seal">道</span><div><b>V0 战斗模拟器</b><small>地基 + 拉条战斗 · 数值均为占位</small></div></div>
+  <nav>
+    <button data-tab="editor">阵容编辑</button>
+    <button data-tab="player">战斗播放</button>
+    <button data-tab="batch">批量模拟</button>
+    <button data-tab="config">配置表</button>
+  </nav>
+</header>
+<main>
+  <section class="page" id="page-editor"></section>
+  <section class="page" id="page-player" hidden></section>
+  <section class="page" id="page-batch" hidden></section>
+  <section class="page" id="page-config" hidden></section>
+</main>
+
+<!-- 加载顺序即依赖顺序（与 src/node.js 保持一致）。经典脚本，file:// 直接打开即可，不需要构建或本地服务器。 -->
+<!-- 地基 -->
+<script src="src/core/tags.js"></script>
+<script src="src/core/rng.js"></script>
+<!-- 配置表 -->
+<script src="src/config/coef.js"></script>
+<script src="src/config/skills.js"></script>
+<script src="src/config/talents.js"></script>
+<script src="src/config/characters.js"></script>
+<!-- 地基：事件、数据模型 -->
+<script src="src/core/events.js"></script>
+<script src="src/core/model.js"></script>
+<!-- 战斗（纯逻辑，可在 Node 里跑） -->
+<script src="src/battle/targeting.js"></script>
+<script src="src/battle/damage.js"></script>
+<script src="src/battle/engine.js"></script>
+<script src="src/battle/log.js"></script>
+<script src="src/battle/simulate.js"></script>
+<!-- UI -->
+<script src="src/ui/util.js"></script>
+<script src="src/ui/config-view.js"></script>
+<script src="src/ui/state.js"></script>
+<script src="src/ui/editor.js"></script>
+<script src="src/ui/player.js"></script>
+<script src="src/ui/batch.js"></script>
+<script src="src/ui/main.js"></script>
+</body>
+</html>
