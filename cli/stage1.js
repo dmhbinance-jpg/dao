@@ -131,7 +131,7 @@ log('| 开局 | 关卡 | 等级 | 剑前法后 | 反过来 | 差 |');
 log('|---|---|---|---|---|---|');
 const formDiffs = [];
 for (const role of ROLES) {
-  for (const st of G.stages().slice(3)) {
+  for (const st of C.chapters[0].stages.slice(3)) {
     let lv = null, d = 0, r = 0;
     for (const L of [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]) {
       d = winRate(duoSave(role, L), st.id, 120);
@@ -270,7 +270,7 @@ log();
   }
   log('| 关卡 | ' + ROLES.map((r) => `${RN[r]} 用时 | ${RN[r]} 最高等级`).join(' | ') + ' |');
   log('|---' + '|---|---'.repeat(ROLES.length) + '|');
-  for (const st of G.stages()) {
+  for (const st of C.chapters[0].stages) {
     const cells = [];
     for (const role of ROLES) {
       const arr = per[role][st.id] || [];

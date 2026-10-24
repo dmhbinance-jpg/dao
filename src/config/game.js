@@ -1,10 +1,12 @@
 /**
- * 游戏主线配置（设计文档第 15 节「开局成长阶梯」）。当前做到阶段 2：第一张技能卡。
+ * 游戏主线配置（设计文档第 15 节「开局成长阶梯」）。当前做到阶段 3：采集灵矿 + 锻造装备。
  *
  *  - starters  开局角色：剑修或法修，资质中等且固定，1 条与本门标签匹配的天赋（阶段 2 起由属性型改为标签型），不随机
  *  - enemies   敌人模板：三维 = base + growth × 等级，与玩家角色同一套公式
  *  - chapters  引导关：第一段青石山（1-4 卡关，单人难过、两人能过）、第二段黑风林（首领狐王，第一张卡能解）
  *  - cards     技能卡：第一张卡、卡池、掉落率、招募自带卡
+ *  - gather    采集：闲置角色派去采灵矿，按秒连续产出（力资质越高越快），不补离线
+ *  - forge     锻造房：灵矿 + 金币即时打造白装（武器 / 胸甲 / 戒指 × 下品 / 中品 / 上品）
  *  - exp/gold  击杀经验与金币
  *  - recruit   洞府招募（抽卡）：首抽免费且保底互补定位；品质决定资质区间和天赋条数
  *  - research  研究：只有「上阵位」一条，每级 +1，从 1 到 5；研究占用一个角色
@@ -18,7 +20,7 @@
   const DAO = (root.DAO = root.DAO || {});
 
   DAO.CONFIG.game = {
-    saveVersion: 3,
+    saveVersion: 4,
 
     // ===== 开局角色 =====
     starters: {
@@ -81,6 +83,22 @@
         base: { str: 7, agi: 10, int: 1 }, growth: { str: 2.3, agi: 1.6, int: 0.4 },
         hpMul: 0.6, exp: 1.3, gold: 1.3, talents: [],
       },
+      ironbear: {
+        name: '铁背熊', role: 'beast', basic: 'beast', innate: 'gore', branch: 0,
+        base: { str: 10, agi: 4, int: 1 }, growth: { str: 2.6, agi: 1.0, int: 0.4 },
+        hpMul: 1.6, dmgUp: 0.8, exp: 2.5, gold: 2.5, talents: [{ id: 'tiepi', roll: 0.5 }],
+      },
+      redfox: {
+        name: '赤狐', role: 'demon', basic: 'demon', innate: 'foxfire', branch: 0,
+        base: { str: 2, agi: 10, int: 8 }, growth: { str: 0.5, agi: 1.6, int: 2.2 },
+        hpMul: 0.55, dmgUp: 0.8, exp: 2.0, gold: 2.0, talents: [],
+      },
+      bearking: {
+        // 首领：前排硬抗，靠「山啸」群伤；没有特殊机制，就是皮厚伤高——考验装备。
+        name: '铁背熊王', title: '首领', role: 'beast', basic: 'beast', innate: 'shanxiao', branch: 0, boss: true,
+        base: { str: 12, agi: 6, int: 2 }, growth: { str: 2.8, agi: 1.2, int: 0.6 },
+        hpMul: 3.0, dmgUp: 1.0, exp: 10.0, gold: 15.0, talents: [{ id: 'tiepi', roll: 1 }],
+      },
       foxking: {
         // 首领机制：躲在后排、开场护盾；「妖风阵」让其他妖兽护甲 / 法抗 +60（不加自己）。本体血薄、伤害高——先越过前排打掉它最划算。
         name: '黑风狐王', title: '首领', role: 'demon', basic: 'demon', innate: 'yaofengzhen', branch: 0, boss: true,
@@ -138,6 +156,25 @@
         enemies: [{ enemyId: 'blackwolf', level: 15, row: 'front' }, { enemyId: 'boar', level: 15, row: 'front' }, { enemyId: 'blackwolf', level: 15, row: 'front' }, { enemyId: 'fox', level: 15, row: 'back' }, { enemyId: 'fox', level: 15, row: 'back' }] },
       { id: '2-8', name: '黑风狐王', note: '首领：躲在后排给前排加甲', boss: true,
         enemies: [{ enemyId: 'stoneboar', level: 13, row: 'front' }, { enemyId: 'stoneboar', level: 13, row: 'front' }, { enemyId: 'foxking', level: 15, row: 'back' }] },
+    ] },
+    // 第三段：敌人皮厚、伤害高（铁背熊、赤狐），只靠等级追得很慢，打一套中档白装才顺。
+    { id: 'tieyan', name: '铁岩谷', desc: '引导关第三段 · 该打装备了', stages: [
+      { id: '3-1', name: '谷口', note: '两只铁背熊挡路',
+        enemies: [{ enemyId: 'ironbear', level: 18, row: 'front' }, { enemyId: 'ironbear', level: 18, row: 'front' }, { enemyId: 'redfox', level: 18, row: 'back' }] },
+      { id: '3-2', name: '赤狐坡', note: '后排两只赤狐',
+        enemies: [{ enemyId: 'blackwolf', level: 19, row: 'front' }, { enemyId: 'ironbear', level: 19, row: 'front' }, { enemyId: 'redfox', level: 19, row: 'back' }, { enemyId: 'redfox', level: 19, row: 'back' }] },
+      { id: '3-3', name: '熊穴', note: '该去打装备了',
+        enemies: [{ enemyId: 'ironbear', level: 19, row: 'front' }, { enemyId: 'ironbear', level: 19, row: 'front' }, { enemyId: 'redfox', level: 19, row: 'back' }, { enemyId: 'redfox', level: 19, row: 'back' }] },
+      { id: '3-4', name: '乱石', note: '五只妖兽',
+        enemies: [{ enemyId: 'stoneboar', level: 19, row: 'front' }, { enemyId: 'ironbear', level: 19, row: 'front' }, { enemyId: 'blackwolf', level: 19, row: 'front' }, { enemyId: 'redfox', level: 19, row: 'back' }, { enemyId: 'redfox', level: 19, row: 'back' }] },
+      { id: '3-5', name: '赤焰林', note: '三只赤狐',
+        enemies: [{ enemyId: 'ironbear', level: 20, row: 'front' }, { enemyId: 'blackwolf', level: 20, row: 'front' }, { enemyId: 'redfox', level: 20, row: 'back' }, { enemyId: 'redfox', level: 20, row: 'back' }, { enemyId: 'redfox', level: 20, row: 'back' }] },
+      { id: '3-6', name: '熊群', note: '三只铁背熊',
+        enemies: [{ enemyId: 'ironbear', level: 20, row: 'front' }, { enemyId: 'ironbear', level: 20, row: 'front' }, { enemyId: 'ironbear', level: 20, row: 'front' }, { enemyId: 'redfox', level: 20, row: 'back' }] },
+      { id: '3-7', name: '铁岩', note: '五只妖兽',
+        enemies: [{ enemyId: 'ironbear', level: 21, row: 'front' }, { enemyId: 'ironbear', level: 21, row: 'front' }, { enemyId: 'blackwolf', level: 21, row: 'front' }, { enemyId: 'redfox', level: 21, row: 'back' }, { enemyId: 'redfox', level: 21, row: 'back' }] },
+      { id: '3-8', name: '铁背熊王', note: '首领：皮糙肉厚', boss: true,
+        enemies: [{ enemyId: 'bearking', level: 21, row: 'front' }, { enemyId: 'ironbear', level: 20, row: 'front' }, { enemyId: 'redfox', level: 20, row: 'back' }, { enemyId: 'redfox', level: 20, row: 'back' }] },
     ] }],
 
     // ===== 技能卡（设计文档第 8 节） =====
@@ -223,9 +260,42 @@
       stopAtGuides: true,    // 新系统开放的引导停下来等确认
     },
 
+    // ===== 采集（设计文档第 10 节：不分班次，按秒连续产出） =====
+    // 采集中的角色不能上阵、不能研究、不拿经验。离线不计算：关掉页面期间的产出不补。
+    gather: {
+      unlockChapter: 'heifeng',  // 这一段通关后开放采集和锻造房，并在第三段开头引导
+      oreName: '灵矿',
+      perSec: 1.0,               // 资质系数 1.0 的角色每秒产出
+      refStrGrowth: 3.0,         // 资质系数 = 力成长 ÷ 3.0（开局剑修 = 1.0）
+      minFactor: 0.5,            // 资质系数下限（法修力成长低，也不至于完全没用）
+    },
+
+    // ===== 锻造房：灵矿 + 金币即时打造白装，不占角色，不做建筑升级 =====
+    forge: {
+      slots: ['weapon', 'chest', 'ring'],
+      slotNames: { weapon: '武器', chest: '胸甲', ring: '戒指' },
+      tierNames: ['下品', '中品', '上品'],
+      // 每个部位三档：词条固定，档位越高数值越高、花费越多。
+      recipes: {
+        weapon: { name: '白铁兵刃', desc: '加攻击（物攻、法攻同时加）', tiers: [{ atk: 12 }, { atk: 24 }, { atk: 40 }] },
+        chest: { name: '白铁甲', desc: '加护甲和气血', tiers: [{ armor: 12, hp: 150 }, { armor: 24, hp: 300 }, { armor: 40, hp: 500 }] },
+        ring: { name: '白玉戒', desc: '加一项三维（打造时选力 / 敏 / 智）', stats: ['str', 'agi', 'int'], tiers: [{ value: 6 }, { value: 12 }, { value: 20 }] },
+      },
+      costs: [
+        { ore: 20, gold: 500 },
+        { ore: 50, gold: 1300 },
+        { ore: 120, gold: 3000 },
+      ],
+      guideSlot: 'weapon',       // 锻造引导打的第一件
+      guideTier: 0,
+      hintTier: 1,               // 活动条提示按「中品」判断够不够
+      stuckGuideChapters: ['tieyan'], // 这些章节在最新关第一次战败时排队「该去打装备了」引导（灵矿和金币够了才弹出）
+    },
+
     // ===== 默认设置 =====
     settings: {
       cardPrompts: true,     // 拿到卡、背包里有可重掷的同名卡时，自动推关停下来提示
+      forgeHints: true,      // 灵矿够打下一件装备时在活动条提示（不打断推关）
     },
 
     // ===== 挂机 / 战斗计时 =====
@@ -239,6 +309,7 @@
       watchSpeed: 2,         // 推新关的战斗按 2× 观看
       overheadMs: 4000,      // 每场推关战斗的阅读 / 点击时间（全自动玩家为 0）
       guideMs: 8000,         // 每个引导的阅读 / 确认时间
+      forgeMs: 5000,         // 标准玩家每打造 / 穿上一件装备的操作时间
     },
 
     // ===== 存档迁移 =====

@@ -144,9 +144,11 @@
     }
 
     // ---- 三维 → 二级属性 ----
-    const str = stats.str * (1 + pct.strPct);
-    const agi = stats.agi * (1 + pct.agiPct);
-    const int = stats.int * (1 + pct.intPct);
+    // 装备（阶段 3）：ch.gear = { atk, armor, resist, hp, str, agi, int } 合计加成。三维加在百分比天赋之前。
+    const gear = ch.gear || {};
+    const str = (stats.str + (gear.str || 0)) * (1 + pct.strPct);
+    const agi = (stats.agi + (gear.agi || 0)) * (1 + pct.agiPct);
+    const int = (stats.int + (gear.int || 0)) * (1 + pct.intPct);
     const base = {
       str, agi, int,
       pAtk: str * D.pAtkPerStr,
@@ -159,6 +161,11 @@
       critDmg: D.critDmgBase + agi * D.critDmgPerAgi + flat.critDmg,
       maxHp: Math.round((D.hpBase + D.hpPerLevel * level) * hpMul * (1 + pct.hpPct)),
     };
+    // 装备的固定攻击加在物攻和法攻上（剑修吃物攻、法修吃法攻），护甲 / 法抗 / 气血直接加
+    if (gear.atk) { base.pAtk += gear.atk; base.mAtk += gear.atk; }
+    if (gear.armor) base.armor += gear.armor;
+    if (gear.resist) base.resist += gear.resist;
+    if (gear.hp) base.maxHp += Math.round(gear.hp);
 
     // ---- 技能（优先级顺序：主动卡 > 固有 > 普攻） ----
     const skills = [];

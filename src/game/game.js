@@ -40,11 +40,13 @@
       base: clone(st.base), growth: clone(st.growth),
       innate: st.innate, branch: st.branch, talents: clone(st.talents),
       card: null,
+      equip: emptyEquip(),
     };
   }
+  function emptyEquip() { return { weapon: null, chest: null, ring: null }; }
 
   function emptyStats() {
-    return { battles: 0, wins: 0, kills: 0, expTotal: 0, goldTotal: 0, playMs: 0, pushMs: 0, idleMs: 0 };
+    return { battles: 0, wins: 0, kills: 0, expTotal: 0, goldTotal: 0, playMs: 0, pushMs: 0, idleMs: 0, oreTotal: 0, gatherCharMs: 0, forged: 0, forgeGold: 0, forgeOre: 0 };
   }
 
   function newSave(role, name, now) {
@@ -59,7 +61,7 @@
       roster: [starterChar(role, name)],
       lineup: [{ id: 'c1', row: 'front' }],
       research: { slots: cfg().research.slots.start, active: null },
-      unlocks: { cave: false },
+      unlocks: { cave: false, forge: false },
       guide: { queue: [], seen: {} },
       recruit: { day: null, today: 0, freeUsed: false },
       pendingRecruit: null,
@@ -72,6 +74,10 @@
       settings: clone(cfg().settings),
       bagNew: false,
       cardsInfo: { firstGot: false, rerolls: 0, replaces: 0, swapOffers: 0, inserts: 0 },
+      ore: 0,
+      gather: { ids: [], last: null },
+      gearBag: [],
+      nextGearId: 1,
     };
   }
 
@@ -82,8 +88,9 @@
   function migrate(s, now) {
     if (!s || typeof s !== 'object') return null;
     if (s.v === cfg().saveVersion) return isValidV2(s) ? s : null;
-    if (s.v === 2) return isValidV2(s) ? migrateV2(s) : null;
-    if (s.v === 1 && s.hero && cfg().starters[s.hero.role]) return migrateV2(migrateV1(s, now));
+    if (s.v === 3) return isValidV2(s) ? migrateV3(s) : null;
+    if (s.v === 2) return isValidV2(s) ? migrateV3(migrateV2(s)) : null;
+    if (s.v === 1 && s.hero && cfg().starters[s.hero.role]) return migrateV3(migrateV2(migrateV1(s, now)));
     return null;
   }
 
@@ -108,7 +115,7 @@
 
   /** v2（阶段 1）→ v3：加背包与卡槽；开局天赋换成同门标签型；打过第一段首领的补发第一张卡 */
   function migrateV2(s) {
-    s.v = cfg().saveVersion;
+    s.v = 3;
     s.bag = s.bag || {};
     s.rollSeed = s.rollSeed || 1;
     s.settings = Object.assign(clone(cfg().settings), s.settings || {});
@@ -124,6 +131,22 @@
     s.guide.queue = s.guide.queue.map(ren);
     if (s.guide.seen.chapterDone) { s.guide.seen[ren('chapterDone')] = true; delete s.guide.seen.chapterDone; }
     if (isCleared(s, cfg().cards.firstCardStage)) grantFirstCard(s);
+    return s;
+  }
+
+  /** v3（阶段 2）→ v4：加灵矿、采集、装备；打完第二段的直接开放采集 / 锻造房并排队采集引导 */
+  function migrateV3(s) {
+    s.v = cfg().saveVersion;
+    s.ore = s.ore || 0;
+    s.gather = s.gather || { ids: [], last: null };
+    s.gearBag = s.gearBag || [];
+    s.nextGearId = s.nextGearId || 1;
+    s.unlocks = Object.assign({ cave: false, forge: false }, s.unlocks || {});
+    s.settings = Object.assign(clone(cfg().settings), s.settings || {});
+    s.stats = Object.assign(emptyStats(), s.stats || {});
+    for (const c of s.roster) c.equip = Object.assign(emptyEquip(), c.equip || {});
+    if (s.pendingRecruit) s.pendingRecruit.equip = Object.assign(emptyEquip(), s.pendingRecruit.equip || {});
+    if (chapterDone(s, cfg().gather.unlockChapter)) unlockForge(s);
     return s;
   }
 
@@ -148,6 +171,7 @@
       level: c.level, base: c.base, growth: c.growth,
       innate: c.innate, branch: c.branch, talents: c.talents,
       activeCard: c.card ? { id: c.card.id, roll: c.card.roll } : null, passiveCard: null,
+      gear: gearBonus(c.equip),
     };
   }
   function charUnit(c, level) {
@@ -194,6 +218,7 @@
   function inLineup(save, id) { return save.lineup.some((e) => e.id === id); }
   function status(save, id) {
     if (isResearching(save, id)) return 'research';
+    if (isGathering(save, id)) return 'gather';
     if (inLineup(save, id)) return 'lineup';
     return 'idle';
   }
@@ -287,7 +312,8 @@
     };
   }
   function lineupSig(save) {
-    return lineupChars(save).map(({ char }) => char.id + ':' + char.level).join(',');
+    // 等级或装备变了都算阵容变化（自动推关会再挑战一次最新关）
+    return lineupChars(save).map(({ char }) => char.id + ':' + char.level + (char.equip ? ':' + cfg().forge.slots.map((sl) => (char.equip[sl] ? char.equip[sl].id : '')).join('.') : '')).join(',');
   }
 
   // ================= 战斗 =================
@@ -352,12 +378,25 @@
         const nx = stages()[stageIndex(o.stageId) + 1];
         unlocked = nx ? nx.id : null;
         const ch = chapterOf(o.stageId);
-        if (ch && ch.stages[ch.stages.length - 1].id === o.stageId) queueGuide(save, 'done:' + ch.id);
+        if (ch && ch.stages[ch.stages.length - 1].id === o.stageId) {
+          queueGuide(save, 'done:' + ch.id);
+          if (ch.id === cfg().gather.unlockChapter) unlockForge(save);
+        }
         if (o.stageId === cfg().cards.firstCardStage) grantFirstCard(save);
         if (o.stageId === cfg().recruit.extraGuideStage) queueGuide(save, 'extraRecruit');
+        // 卡关补装备的引导：这关打过了就不用了
+        const gid = 'gearUp:' + o.stageId;
+        if (save.guide.queue.includes(gid)) { save.guide.queue = save.guide.queue.filter((x) => x !== gid); save.guide.seen[gid] = true; }
       }
     } else {
       save.progress.lost[o.stageId] = (save.progress.lost[o.stageId] || 0) + 1;
+      // 第三段卡关：引导「该去打装备了」（等灵矿和金币够了才弹出，不够时不拦自动推关）
+      const ch = chapterOf(o.stageId);
+      if (o.frontier && ch && (cfg().forge.stuckGuideChapters || []).includes(ch.id) && save.guide.seen.forge) {
+        queueGuide(save, 'gearUp:' + o.stageId);
+        // 上阵位还能研究、又没在研究：顺带提示多开一个上阵位（只提示一次）
+        if (!save.research.active && researchNext(save) && pickSlotResearcher(save)) queueGuide(save, 'moreSlots');
+      }
     }
     // 洞府：在开放关第一次战败（或单人硬过）时开放
     if (o.stageId === cfg().recruit.unlockStage && !save.unlocks.cave) {
@@ -447,6 +486,7 @@
       level: Math.max(1, maxLevel(save) + R.levelOffset), exp: 0,
       base: clone(ref.base), growth,
       innate, branch: 0, talents, card,
+      equip: emptyEquip(),
     };
   }
 
@@ -488,8 +528,10 @@
     if (inLineup(save, id) && save.lineup.length <= 1) return false;
     return save.roster.length > 1;
   }
-  function dismiss(save, id) {
+  function dismiss(save, id, now) {
     if (!canDismiss(save, id)) return false;
+    if (isGathering(save, id)) stopGather(save, id, now, { noLineup: true });
+    returnGear(save, getChar(save, id));   // 身上的装备回背包
     save.roster = save.roster.filter((c) => c.id !== id);
     save.lineup = save.lineup.filter((e) => e.id !== id);
     return true;
@@ -536,6 +578,7 @@
     if (researchBlock(save, charId)) return false;
     const nx = researchNext(save);
     save.gold -= nx.gold;
+    if (isGathering(save, charId)) stopGather(save, charId, now, { noLineup: true });
     if (inLineup(save, charId)) removeFromLineup(save, charId);
     const dur = researchDurationMs(save, charId);
     save.research.active = { level: nx.level, charId, startedAt: now, endsAt: now + dur };
@@ -548,6 +591,8 @@
     save.research.slots = a.level;
     save.research.active = null;
     addToLineup(save, a.charId);
+    // 研究者是从采集调过来的、现在没人采集了：再引导一次派人去采集
+    if (save.unlocks.forge && !save.gather.ids.length && save.guide.seen.gather) { delete save.guide.seen.gather; queueGuide(save, 'gather'); }
     return { level: a.level, charId: a.charId };
   }
   /** 引导用：挑一个研究者（优先闲置里智力最高的，其次非唯一的上阵角色） */
@@ -560,6 +605,259 @@
       return l[0].id;
     }
     return null;
+  }
+
+  /** 取消研究（把研究中的人调去别处）：退还金币，研究者变为闲置 */
+  function cancelResearch(save) {
+    const a = save.research.active;
+    if (!a) return null;
+    const lv = cfg().research.slots.levels[a.level];
+    save.gold += lv ? lv.gold : 0;
+    save.research.active = null;
+    return a.charId;
+  }
+
+  // ================= 采集（灵矿） =================
+  function isGathering(save, id) { return !!(save.gather && save.gather.ids.includes(id)); }
+  /** 资质系数 = 力成长 ÷ 参考值（开局剑修 = 1.0），有下限 */
+  function gatherFactor(c) {
+    const G = cfg().gather;
+    return Math.max(G.minFactor, c.growth.str / G.refStrGrowth);
+  }
+  function gatherRate(c) { return cfg().gather.perSec * gatherFactor(c); }
+  function totalGatherRate(save) {
+    return save.gather.ids.reduce((a, id) => { const c = getChar(save, id); return a + (c ? gatherRate(c) : 0); }, 0);
+  }
+  /** 按秒结算到 now。离线不计算：页面重新打开时先调 resumeGather，关掉期间的产出不补。 */
+  function tickGather(save, now) {
+    const g = save.gather;
+    if (!g.ids.length || g.last == null) { g.last = now; return 0; }
+    const dt = Math.max(0, now - g.last);
+    const gain = (totalGatherRate(save) * dt) / 1000;
+    save.ore += gain;
+    save.stats.oreTotal += gain;
+    save.stats.gatherCharMs += dt * g.ids.length;
+    g.last = now;
+    return gain;
+  }
+  function resumeGather(save, now) { save.gather.last = now; }
+  /** 能不能派这个角色去采集；返回原因（null = 可以） */
+  function gatherBlock(save, id) {
+    if (!save.unlocks.forge) return 'locked';
+    const c = getChar(save, id);
+    if (!c) return 'nochar';
+    if (isGathering(save, id)) return 'already';
+    if (isResearching(save, id)) return 'research';
+    if (inLineup(save, id) && save.lineup.length <= 1) return 'lastFighter';
+    return null;
+  }
+  function startGather(save, id, now) {
+    if (gatherBlock(save, id)) return false;
+    tickGather(save, now);
+    if (inLineup(save, id)) removeFromLineup(save, id);
+    save.gather.ids.push(id);
+    return true;
+  }
+  /** 召回：变为闲置；有空的上阵位就自动上阵（opts.noLineup 不上阵） */
+  function stopGather(save, id, now, opts) {
+    if (!isGathering(save, id)) return false;
+    if (now != null) tickGather(save, now);
+    save.gather.ids = save.gather.ids.filter((x) => x !== id);
+    if (!(opts && opts.noLineup)) addToLineup(save, id);
+    return true;
+  }
+  /**
+   * 采集引导的默认做法：闲置里力资质最高的 → 招募一位（金币够、名额没满）→ 把研究中的人调去 → 上阵里非开局角色中等级最低的。
+   * @returns { mode: 'idle'|'recruit'|'research'|'lineup', charId?, cost? } 或 null
+   */
+  function gatherPlan(save, now) {
+    const idle = save.roster.filter((c) => status(save, c.id) === 'idle').sort((a, b) => b.growth.str - a.growth.str);
+    if (idle.length) return { mode: 'idle', charId: idle[0].id };
+    const opts = gatherOptions(save, now);
+    return opts[0] || null;
+  }
+  /** 没有闲置角色时的几种办法（引导里列出来让玩家选） */
+  function gatherOptions(save, now) {
+    const out = [];
+    if (save.unlocks.cave && !save.pendingRecruit && save.roster.length < cfg().roster.cap && save.gold >= recruitCost(save, now)) out.push({ mode: 'recruit', cost: recruitCost(save, now) });
+    if (save.research.active) out.push({ mode: 'research', charId: save.research.active.charId });
+    if (save.lineup.length > 1) {
+      const l = lineupChars(save).map((x) => x.char).filter((c) => c.origin !== 'starter')
+        .sort((a, b) => a.level - b.level || b.growth.str - a.growth.str);
+      if (l.length) out.push({ mode: 'lineup', charId: l[0].id });
+    }
+    return out;
+  }
+  /** 按计划派人去采集；返回 { charId, recruit? } 或 null */
+  function doGatherPlan(save, plan, now) {
+    if (!plan) return null;
+    const info = {};
+    let id = plan.charId;
+    if (plan.mode === 'recruit') {
+      info.recruit = recruit(save, now);
+      if (!info.recruit.ok || !info.recruit.added) return info.recruit.ok ? info : null;
+      id = info.recruit.char.id;
+    } else if (plan.mode === 'research') {
+      cancelResearch(save);
+    }
+    if (!startGather(save, id, now)) return null;
+    info.charId = id;
+    return info;
+  }
+
+  // ================= 锻造房 / 装备 =================
+  function recipe(slot) { return cfg().forge.recipes[slot]; }
+  function forgeCost(tier) { return cfg().forge.costs[tier]; }
+  function mainStat(c) { return c.role === 'mage' ? 'int' : 'str'; }
+  /** 一件装备的加成（数值按配置表现算，调表后老装备跟着变） */
+  function gearStats(item) {
+    const r = recipe(item.slot);
+    const t = r && r.tiers[item.tier];
+    if (!t) return {};
+    if (item.slot === 'ring') return { [item.stat]: t.value };
+    return Object.assign({}, t);
+  }
+  function gearBonus(equip) {
+    const out = {};
+    if (!equip) return out;
+    for (const slot of cfg().forge.slots) {
+      const it = equip[slot];
+      if (!it) continue;
+      for (const [k, v] of Object.entries(gearStats(it))) out[k] = (out[k] || 0) + v;
+    }
+    return out;
+  }
+  function gearName(item) {
+    const F = cfg().forge;
+    const statName = { str: '力', agi: '敏', int: '智' };
+    return F.tierNames[item.tier] + recipe(item.slot).name + (item.slot === 'ring' ? '·' + statName[item.stat] : '');
+  }
+  function forgeBlock(save, slot, tier) {
+    if (!save.unlocks.forge) return 'locked';
+    const c = forgeCost(tier);
+    if (!recipe(slot) || !c) return 'invalid';
+    if (save.ore < c.ore) return 'ore';
+    if (save.gold < c.gold) return 'gold';
+    return null;
+  }
+  /** 即时打造一件，放进背包。opts.stat：戒指的三维（默认力） */
+  function forge(save, slot, tier, opts) {
+    if (forgeBlock(save, slot, tier)) return null;
+    const c = forgeCost(tier);
+    save.ore -= c.ore;
+    save.gold -= c.gold;
+    const r = recipe(slot);
+    const item = { id: 'g' + save.nextGearId++, slot, tier };
+    if (slot === 'ring') item.stat = r.stats.includes(opts && opts.stat) ? opts.stat : r.stats[0];
+    save.gearBag.push(item);
+    save.stats.forged++;
+    save.stats.forgeGold += c.gold;
+    save.stats.forgeOre += c.ore;
+    return item;
+  }
+  /** 找装备：在背包或某个角色身上 */
+  function findGear(save, gearId) {
+    const i = save.gearBag.findIndex((g) => g.id === gearId);
+    if (i >= 0) return { item: save.gearBag[i], owner: null };
+    for (const c of save.roster) for (const slot of cfg().forge.slots) if (c.equip[slot] && c.equip[slot].id === gearId) return { item: c.equip[slot], owner: c };
+    return null;
+  }
+  /** 穿上（可以从背包，也可以从别的角色身上换过来）；原来那件回背包 */
+  function equip(save, charId, gearId) {
+    const c = getChar(save, charId);
+    const f = findGear(save, gearId);
+    if (!c || !f) return false;
+    if (f.owner && f.owner.id === c.id) return true;
+    const slot = f.item.slot;
+    if (f.owner) f.owner.equip[slot] = null;
+    else save.gearBag = save.gearBag.filter((g) => g.id !== gearId);
+    if (c.equip[slot]) save.gearBag.push(c.equip[slot]);
+    c.equip[slot] = f.item;
+    return true;
+  }
+  function unequip(save, charId, slot) {
+    const c = getChar(save, charId);
+    if (!c || !c.equip[slot]) return false;
+    save.gearBag.push(c.equip[slot]);
+    c.equip[slot] = null;
+    return true;
+  }
+  function returnGear(save, c) {
+    if (!c || !c.equip) return;
+    for (const slot of cfg().forge.slots) if (c.equip[slot]) { save.gearBag.push(c.equip[slot]); c.equip[slot] = null; }
+  }
+  function forgeAndEquip(save, charId, slot, tier, stat) {
+    const c = getChar(save, charId);
+    const item = forge(save, slot, tier, { stat: stat || (c ? mainStat(c) : 'str') });
+    if (item && c) equip(save, charId, item.id);
+    return item;
+  }
+  /**
+   * 下一件该做的装备（活动条提示 / 标准玩家用）：按上阵顺序 × 武器、胸甲、戒指，
+   * 先补到「中品」（forge.hintTier），都到了再往上品走。背包里有更好的就直接穿（不花钱）。
+   * @returns { kind: 'equip'|'forge', charId, slot, tier, stat?, gearId?, cost?, affordable } 或 null
+   */
+  function nextUpgrade(save) {
+    if (!save.unlocks.forge) return null;
+    const F = cfg().forge;
+    const top = F.costs.length - 1;
+    const chars = lineupChars(save).map((x) => x.char);
+    for (const target of [F.hintTier, top]) {
+      for (const c of chars) {
+        for (const slot of F.slots) {
+          const cur = c.equip[slot];
+          const curTier = cur ? cur.tier : -1;
+          if (curTier >= target) continue;
+          const want = mainStat(c);
+          const better = save.gearBag.filter((g) => g.slot === slot && g.tier > curTier && (slot !== 'ring' || g.stat === want)).sort((a, b) => b.tier - a.tier)[0];
+          if (better) return { kind: 'equip', charId: c.id, slot, tier: better.tier, gearId: better.id, affordable: true };
+          const cost = forgeCost(target);
+          return { kind: 'forge', charId: c.id, slot, tier: target, stat: slot === 'ring' ? want : undefined, cost, affordable: !forgeBlock(save, slot, target) };
+        }
+      }
+    }
+    return null;
+  }
+  function doUpgrade(save, u) {
+    if (!u || !u.affordable) return null;
+    if (u.kind === 'equip') return equip(save, u.charId, u.gearId) ? findGear(save, u.gearId).item : null;
+    return forgeAndEquip(save, u.charId, u.slot, u.tier, u.stat);
+  }
+  /** 活动条提示：灵矿和金币够打下一件时返回建议（不打断推关） */
+  function forgeHint(save) {
+    if (!save.settings.forgeHints) return null;
+    const u = nextUpgrade(save);
+    return u && u.kind === 'forge' && u.affordable ? u : null;
+  }
+  /** 现在的灵矿和金币一口气能做完的升级（不改存档），卡关引导的预览用 */
+  function planUpgrades(save) {
+    const s = clone(save);
+    const out = [];
+    for (let u = nextUpgrade(s), g = 0; u && u.affordable && g < 20; u = nextUpgrade(s), g++) {
+      out.push(u);
+      doUpgrade(s, u);
+    }
+    return out;
+  }
+  function doAllUpgrades(save) {
+    const out = [];
+    for (let u = nextUpgrade(save), g = 0; u && u.affordable && g < 20; u = nextUpgrade(save), g++) out.push(Object.assign({ item: doUpgrade(save, u) }, u));
+    return out;
+  }
+  function unlockForge(save) {
+    if (save.unlocks.forge) return;
+    save.unlocks.forge = true;
+    queueGuide(save, 'gather');
+  }
+
+  /** 卡关时研究上阵位找谁去：闲置里智力最高的，其次采集中智力最高的（采集中的人被调走，采集停下） */
+  function pickSlotResearcher(save) {
+    const ints = (c) => charUnit(c).base.int;
+    const pick = (list) => list.sort((a, b) => ints(b) - ints(a))[0];
+    const idle = save.roster.filter((c) => status(save, c.id) === 'idle');
+    if (idle.length) return pick(idle).id;
+    const gat = save.roster.filter((c) => isGathering(save, c.id));
+    return gat.length ? pick(gat).id : null;
   }
 
   // ================= 技能卡 =================
@@ -691,12 +989,30 @@
     if (save.guide.seen[id] || save.guide.queue.includes(id)) return;
     save.guide.queue.push(id);
   }
-  function currentGuide(save) { return save.guide.queue[0] || null; }
+  /** 当前该弹的引导：队列里第一个现在就能执行的；都执行不了时返回队首（界面显示「等待中」） */
+  function currentGuide(save) {
+    const q = save.guide.queue;
+    return q.find((id) => !guideBlock(save, id)) || q[0] || null;
+  }
   /** 引导确认按钮当前能否执行（例如研究金币不够） */
   function guideBlock(save, id) {
     if (id === 'extraRecruit') {
       if (save.pendingRecruit) return 'pending';
       return save.gold >= recruitCost(save, guideNow) ? null : 'gold';
+    }
+    if (id === 'gather') return save.gather.ids.length || gatherPlan(save, guideNow) ? null : 'nochar';
+    if (id === 'moreSlots') {
+      if (save.research.active || !researchNext(save)) return null;   // 已经在研究 / 研究满了：确认后直接关掉
+      const rid = pickSlotResearcher(save);
+      return rid ? researchBlock(save, rid) : 'nochar';
+    }
+    if (id.startsWith('gearUp:')) {
+      const u = nextUpgrade(save);
+      return u && u.affordable ? null : 'ore';
+    }
+    if (id === 'forge') {
+      if (Object.values(gearAll(save)).length) return null;
+      return forgeBlock(save, cfg().forge.guideSlot, cfg().forge.guideTier);
     }
     if (id === 'research') {
       if (save.research.active || save.research.slots >= 2) return null;
@@ -708,9 +1024,25 @@
   }
   /** 确认引导，执行它代表的动作 */
   let guideNow = Date.now();
-  function ackGuide(save, id, now) {
+  /** 玩家已经有的全部装备（背包 + 身上） */
+  function gearAll(save) {
+    const out = save.gearBag.slice();
+    for (const c of save.roster) for (const slot of cfg().forge.slots) if (c.equip && c.equip[slot]) out.push(c.equip[slot]);
+    return out;
+  }
+  /** 锻造引导给谁穿：开局角色在上阵就给他，否则第一个上阵角色 */
+  function forgeGuideTarget(save) {
+    const st = starter(save);
+    if (inLineup(save, st.id)) return st.id;
+    return save.lineup[0] ? save.lineup[0].id : st.id;
+  }
+  /**
+   * @param opts { plan }：采集引导里玩家选的办法（默认 gatherPlan）
+   */
+  function ackGuide(save, id, now, opts) {
     guideNow = now || Date.now();
-    if (currentGuide(save) !== id) return { ok: false };
+    opts = opts || {};
+    if (!save.guide.queue.includes(id)) return { ok: false };
     if (guideBlock(save, id)) return { ok: false, error: guideBlock(save, id) };
     const info = { ok: true };
     if (id === 'cave') {
@@ -731,9 +1063,33 @@
       if (target && (save.bag[cid] || 0) > 0) info.insert = insertCard(save, target.id, cid);
     } else if (id === 'extraRecruit') {
       info.recruit = recruit(save, now);
+    } else if (id === 'gather') {
+      if (!save.gather.ids.length) {
+        const r = doGatherPlan(save, opts.plan || gatherPlan(save, now), now);
+        if (!r) return { ok: false, error: 'nochar' };
+        Object.assign(info, r);
+      }
+      queueGuide(save, 'forge');
+    } else if (id.startsWith('gearUp:')) {
+      info.upgrades = doAllUpgrades(save);
+    } else if (id === 'moreSlots') {
+      if (!save.research.active && researchNext(save)) {
+        const rid = pickSlotResearcher(save);
+        if (rid && startResearch(save, rid, now)) info.researcher = rid;
+      }
+    } else if (id === 'forge') {
+      if (!gearAll(save).length) {
+        const F = cfg().forge;
+        const tid = forgeGuideTarget(save);
+        info.item = forgeAndEquip(save, tid, F.guideSlot, F.guideTier);
+        info.charId = tid;
+      }
     }
-    save.guide.queue.shift();
-    save.guide.seen[id] = true;
+    save.guide.queue = save.guide.queue.filter((x) => x !== id);
+    if (id.startsWith('gearUp:')) {
+      // 卡关补装备的引导可以反复出现：这关还没过，就留在队列里，下次灵矿和金币够了再弹
+      if (!isCleared(save, id.slice(7))) save.guide.queue.push(id);
+    } else save.guide.seen[id] = true;
     return info;
   }
 
@@ -779,5 +1135,8 @@
     chapters, chapterOf, chapterDone,
     cardDef, cardTags, canUseCard, cardValue, bagCount, insertPreview, insertCard, cardActions, autoHandleCards, dismissCardPrompt, dropKind, grantFirstCard,
     autoDecide, confirmBoss,
+    cancelResearch,
+    isGathering, gatherFactor, gatherRate, totalGatherRate, tickGather, resumeGather, gatherBlock, startGather, stopGather, gatherPlan, gatherOptions, doGatherPlan,
+    recipe, forgeCost, mainStat, gearStats, gearBonus, gearName, forgeBlock, forge, findGear, equip, unequip, forgeAndEquip, nextUpgrade, doUpgrade, planUpgrades, doAllUpgrades, forgeHint, gearAll, pickSlotResearcher,
   };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

@@ -461,3 +461,34 @@ button.ghost { background: transparent; }
 .kept-mark { color: var(--a); font-weight: 700; font-size: 12px; }
 .vs-arrow { color: var(--ink-3); }
 .modal-extra { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-top: 8px; }
+
+/* ===== 阶段 3：采集 / 锻造房 / 装备 ===== */
+.chip-stat.ore b { color: var(--shield); }
+.act-gather, .act-hint { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.act-gather b { color: var(--shield); font-variant-numeric: tabular-nums; }
+.act-hint { border: 1px solid var(--gold); border-radius: 4px; padding: 2px 6px; background: color-mix(in srgb, var(--gold) 10%, transparent); }
+.gather-total { display: flex; gap: 16px; margin: 4px 0 8px; font-size: 13px; }
+.gather-total b { color: var(--shield); font-variant-numeric: tabular-nums; }
+.researcher.on .r-name { color: var(--shield); }
+.forge-row { display: grid; grid-template-columns: 56px minmax(0, 1fr); gap: 8px; align-items: center; margin: 6px 0; }
+.fr-label { color: var(--ink-2); font-size: 13px; }
+.seg { display: flex; flex-wrap: wrap; gap: 4px; }
+.seg button { padding: 2px 10px; }
+.forge-preview { border: 1px dashed var(--line); border-radius: 4px; padding: 8px 10px; margin: 8px 0; display: grid; gap: 6px; }
+.forge-cost { display: flex; gap: 14px; flex-wrap: wrap; font-size: 13px; }
+.forge-cost .lack { color: var(--b); }
+.forge-preview > button { justify-self: start; }
+.gear-bag-row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 8px; align-items: center; padding: 3px 0; border-bottom: 1px dashed var(--line); font-size: 13px; }
+.gear-name { font-weight: 600; }
+.gear-name.t0 { color: var(--ink-2); }
+.gear-name.t1 { color: var(--a); }
+.gear-name.t2 { color: var(--gold); }
+.gear-slots { display: grid; gap: 4px; }
+.gear-slot { display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; gap: 6px; align-items: center; border: 1px solid var(--line); border-radius: 4px; padding: 4px 6px; font-size: 13px; }
+.gear-slot.empty { border-style: dashed; }
+.gs-main { display: grid; }
+.gs-main small { font-size: 11px; }
+.gs-btns { display: flex; gap: 4px; }
+.gear-choose { display: grid; gap: 6px; margin-top: 8px; }
+.gear-opt { text-align: left; display: flex; flex-wrap: wrap; gap: 4px; align-items: baseline; }
+.char-card.st-gather { border-left: 3px solid var(--shield); }
