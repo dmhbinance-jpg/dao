@@ -16,9 +16,9 @@
   }
 
   // 启动时应用本机保存的配置
-  const saved = UI.store.get('config', null);
+  const saved = UI.store.get('config.v2', null);
   if (saved) {
-    try { replaceConfig(saved); UI.configOverridden = true; } catch (e) { UI.store.del('config'); }
+    try { replaceConfig(saved); UI.configOverridden = true; } catch (e) { UI.store.del('config.v2'); }
   }
 
   let rootEl, ta, msg;
@@ -40,7 +40,7 @@
     try {
       const obj = JSON.parse(ta.value);
       replaceConfig(obj);
-      UI.store.set('config', obj);
+      UI.store.set('config.v2', obj);
       UI.configOverridden = true;
       msg.textContent = '已应用 ✓';
       UI.changed();
@@ -50,7 +50,7 @@
   }
 
   function reset() {
-    UI.store.del('config');
+    UI.store.del('config.v2');
     replaceConfig(JSON.parse(JSON.stringify(DAO.CONFIG_DEFAULT)));
     UI.configOverridden = false;
     ta.value = JSON.stringify(DAO.CONFIG, null, 2);

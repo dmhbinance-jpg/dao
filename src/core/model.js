@@ -51,11 +51,28 @@
     return withShapeTag(s);
   }
 
-  function basicSkill(role) {
-    const s = clone(DAO.CONFIG.basicSkills[role]);
+  function basicSkill(key) {
+    const s = clone(DAO.CONFIG.basicSkills[key]);
     s.source = 'basic';
     s.cd = 0;
     return withShapeTag(s);
+  }
+
+  /**
+   * 某等级的三维。
+   *  - 有 growth（成长资质）时：三维 = base + growth × 等级（设计文档第 6 节）
+   *  - 否则直接用 stats（V0 角色写的是已含等级的最终值）
+   */
+  function statsAt(ch, level) {
+    if (ch.growth) {
+      const b = ch.base || { str: 0, agi: 0, int: 0 };
+      return {
+        str: b.str + ch.growth.str * level,
+        agi: b.agi + ch.growth.agi * level,
+        int: b.int + ch.growth.int * level,
+      };
+    }
+    return ch.stats;
   }
 
   /**
@@ -69,6 +86,9 @@
     const C = DAO.CONFIG;
     const D = C.derive;
     const role = C.roles[ch.role] || { hpMul: 1 };
+    const hpMul = ch.hpMul != null ? ch.hpMul : role.hpMul;
+    const level = ch.level || C.level || 1;
+    const stats = statsAt(ch, level);
 
     const pct = { strPct: 0, agiPct: 0, intPct: 0, hpPct: 0, armorPct: 0, resistPct: 0 };
     const flat = { critRate: 0, critDmg: 0, speed: 0, armor: 0, resist: 0 };
@@ -124,10 +144,9 @@
     }
 
     // ---- 三维 → 二级属性 ----
-    const str = ch.stats.str * (1 + pct.strPct);
-    const agi = ch.stats.agi * (1 + pct.agiPct);
-    const int = ch.stats.int * (1 + pct.intPct);
-    const level = ch.level || C.level || 1;
+    const str = stats.str * (1 + pct.strPct);
+    const agi = stats.agi * (1 + pct.agiPct);
+    const int = stats.int * (1 + pct.intPct);
     const base = {
       str, agi, int,
       pAtk: str * D.pAtkPerStr,
@@ -138,7 +157,7 @@
       speed: D.speedBase + agi * D.speedPerAgi + flat.speed,
       critRate: D.critRateBase + agi * D.critRatePerAgi + flat.critRate,
       critDmg: D.critDmgBase + agi * D.critDmgPerAgi + flat.critDmg,
-      maxHp: Math.round((D.hpBase + D.hpPerLevel * level) * role.hpMul * (1 + pct.hpPct)),
+      maxHp: Math.round((D.hpBase + D.hpPerLevel * level) * hpMul * (1 + pct.hpPct)),
     };
 
     // ---- 技能（优先级顺序：主动卡 > 固有 > 普攻） ----
@@ -149,7 +168,7 @@
     }
     const inn = innateSkill(ch.innate, ch.branch);
     if (inn) { inn.key = 'innate'; skills.push(inn); }
-    const bas = basicSkill(ch.role);
+    const bas = basicSkill(ch.basic || ch.role);
     bas.key = 'basic';
     skills.push(bas);
     const order = C.ai.priority;
@@ -162,7 +181,8 @@
       uid: side + slot,
       charId: charId || ch.id,
       side, row, slot,
-      name: ch.name, title: ch.title, role: ch.role,
+      name: ch.name, title: ch.title, role: ch.role, level,
+      exp: ch.exp || 0, // 被击杀时给击杀者的经验（敌人用）
       base, mods, skills, cds, triggers,
       talentInfo, passiveInfo,
       hp: base.maxHp, shield: 0, alive: true, bar: 0,
@@ -182,6 +202,7 @@
       supportMitigated: 0, supportAmplified: 0, // 辅助贡献：防御区（减伤/破甲）和增伤 buff
       supportArmorBuff: 0, supportArmorBreak: 0, supportDmgBuff: 0,
       redirected: 0, // 守护/嘲讽挡下的攻击次数
+      victims: [],   // 击杀记录 [{ id, level, exp }]，用于结算经验
       triggers: {},  // triggerName -> count
       skills: {},    // skillName -> {casts, dmg, sumSq, hits}
     };
@@ -195,12 +216,15 @@
     const out = [];
     const rowCount = { front: 0, back: 0 };
     lineup.forEach((entry, i) => {
-      const tpl = DAO.CONFIG.characters[entry.charId];
-      if (!tpl) throw new Error('未知角色: ' + entry.charId);
+      // 三种来源：内联角色（玩家角色）/ V0 角色模板 / 敌人模板
+      const id = entry.charId || entry.enemyId || (entry.char && entry.char.id);
+      const tpl = entry.char || (entry.enemyId ? ((DAO.CONFIG.stage0 || {}).enemies || {})[entry.enemyId] : DAO.CONFIG.characters[entry.charId]);
+      if (!tpl) throw new Error('未知角色: ' + id);
       const ch = Object.assign(clone(tpl), entry.override ? clone(entry.override) : {});
-      ch.id = entry.charId;
+      if (entry.level != null) ch.level = entry.level;
+      ch.id = id;
       const row = entry.row || ch.row || 'front';
-      out.push(buildUnit(ch, side, row, rowCount[row]++ + (row === 'back' ? 10 : 0), entry.charId));
+      out.push(buildUnit(ch, side, row, rowCount[row]++ + (row === 'back' ? 10 : 0), id));
       out[out.length - 1].uid = side + i;
       out[out.length - 1].index = i;
     });
@@ -217,10 +241,10 @@
     const b = lineup.filter((e) => e.row === 'back').length;
     if (f > C.maxPerRow) errs.push(`前排 ${f} 人，超过上限 ${C.maxPerRow}`);
     if (b > C.maxPerRow) errs.push(`后排 ${b} 人，超过上限 ${C.maxPerRow}`);
-    const ids = lineup.map((e) => e.charId);
+    const ids = lineup.filter((e) => e.charId).map((e) => e.charId); // 敌人模板可重复
     if (new Set(ids).size !== ids.length) errs.push('同一角色重复上阵');
     return errs;
   }
 
-  DAO.Model = { rollValue, cardSkill, innateSkill, basicSkill, buildUnit, buildTeam, validateLineup, clone, newStats };
+  DAO.Model = { rollValue, cardSkill, innateSkill, basicSkill, statsAt, buildUnit, buildTeam, validateLineup, clone, newStats };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

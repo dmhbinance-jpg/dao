@@ -127,7 +127,7 @@ main { padding: 16px 20px 40px; max-width: 1400px; margin: 0 auto; }
 .marker.side-B { background: var(--b); top: 10px; }
 .marker.dead { opacity: .15; }
 .player-grid { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 12px; align-items: start; }
-.field-grid { display: grid; grid-template-columns: 1fr 1fr 28px 1fr 1fr; gap: 8px; }
+.field-grid { display: grid; grid-template-columns: var(--cols, 1fr 1fr 28px 1fr 1fr); gap: 8px; }
 .col { display: flex; flex-direction: column; gap: 8px; }
 .col-label { font-size: 12px; color: var(--ink-3); text-align: center; }
 .vs { display: grid; place-items: center; color: var(--ink-3); writing-mode: vertical-rl; letter-spacing: .5em; }
@@ -197,4 +197,112 @@ tr.grp td { background: var(--paper-2); font-weight: 600; }
   .field-grid .vs { display: none; }
   .field { grid-template-columns: 1fr; }
   .row-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+/* ===================== 阶段 0 ===================== */
+.navlink { color: var(--ink-2); text-decoration: none; padding: 6px 10px; font-size: 13px; }
+.navlink:hover { color: var(--ink); }
+.s0-nav { align-items: center; }
+button.danger { background: var(--b); color: #fff; border-color: var(--b); }
+button:disabled { opacity: .45; cursor: not-allowed; }
+.brand small a { color: inherit; }
+
+/* 选角 */
+.chooser { max-width: 980px; margin: 0 auto; display: grid; gap: 18px; }
+.chooser-intro h2 { margin: 8px 0 4px; font-size: 28px; letter-spacing: .2em; }
+.chooser-intro p { margin: 0; color: var(--ink-2); }
+.role-cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.role-card { text-align: left; background: var(--card); border: 1px solid var(--line); border-radius: 6px; padding: 16px; display: grid; gap: 12px; cursor: pointer; }
+.role-card:hover { border-color: var(--ink-3); }
+.role-card.on { border-color: var(--ink); box-shadow: inset 0 0 0 1px var(--ink); }
+.role-card:focus-visible, button:focus-visible, .name-input:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+.role-head { display: flex; gap: 12px; align-items: flex-start; }
+.role-head h3 { margin: 0 0 2px; font-size: 20px; }
+.role-head p { margin: 0; color: var(--ink-2); font-size: 13px; }
+.role-glyph { flex: none; display: grid; place-items: center; width: 44px; height: 44px; border-radius: 50%; font-size: 22px; font-weight: 700; color: #fff8ee; }
+.role-sword { background: var(--a); }
+.role-mage { background: var(--b); }
+.role-section h4, .hero-card h4 { margin: 0 0 6px; font-size: 12px; color: var(--ink-3); font-weight: 600; letter-spacing: .1em; }
+.triad-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.triad-grid > div { background: var(--paper); border: 1px solid var(--line); border-radius: 4px; padding: 6px 8px; display: grid; grid-template-columns: auto 1fr; align-items: baseline; gap: 0 6px; }
+.triad-grid span { color: var(--ink-2); }
+.triad-grid b { font-size: 18px; text-align: right; font-variant-numeric: tabular-nums; }
+.triad-grid small { grid-column: 1 / -1; text-align: right; font-size: 11px; }
+.kv-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 2px 14px; font-size: 13px; }
+.kv-grid > div { display: flex; justify-content: space-between; border-bottom: 1px dotted var(--line); padding: 2px 0; }
+.kv-grid span { color: var(--ink-3); }
+.kv-grid b { font-variant-numeric: tabular-nums; font-weight: 600; }
+.skill-row { font-size: 13px; display: flex; flex-wrap: wrap; gap: 2px 8px; padding: 2px 0; }
+.skill-row span { color: var(--ink-2); }
+.chooser-go { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
+.name-input { background: var(--card); border: 1px solid var(--line); border-radius: 4px; padding: 8px 10px; width: 14em; }
+.big-btn { padding: 8px 28px; font-size: 16px; }
+
+/* 主界面 */
+.s0-grid { display: grid; grid-template-columns: 320px minmax(0, 1fr); gap: 14px; align-items: start; }
+.s0-side { display: grid; gap: 12px; }
+.s0-main { min-width: 0; }
+.hero-card { display: grid; gap: 10px; }
+.hero-head { display: flex; align-items: center; gap: 10px; }
+.hero-head h2 { margin: 0; font-size: 18px; }
+.lv { margin-left: auto; text-align: right; display: grid; }
+.lv b { font-size: 30px; line-height: 1; font-variant-numeric: tabular-nums; }
+.expbar { position: relative; height: 18px; background: var(--paper-2); border-radius: 3px; overflow: hidden; }
+.exp-fill { position: absolute; inset: 0 auto 0 0; background: var(--gold); opacity: .55; transition: width .4s; }
+.expbar span { position: relative; font-size: 11px; padding-left: 6px; line-height: 18px; font-variant-numeric: tabular-nums; }
+.hero-foot { font-size: 12px; border-top: 1px dashed var(--line); padding-top: 8px; }
+
+.idle-card h4 { margin: 0; }
+.idle-card p { margin: 6px 0 0; font-size: 13px; }
+.idle-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.idle-head h4 span { color: var(--ink); }
+.idle-bar { height: 6px; background: var(--paper-2); border-radius: 3px; overflow: hidden; margin-top: 8px; }
+.idle-fill { height: 100%; width: 0; background: var(--a); transition: width .15s linear; }
+
+.stages-card { display: grid; gap: 8px; }
+.stages-head { display: flex; justify-content: space-between; align-items: flex-end; gap: 10px; border-bottom: 1px solid var(--line); padding-bottom: 8px; }
+.stages-head h2 { margin: 0; letter-spacing: .1em; }
+.progress-chip { font-variant-numeric: tabular-nums; border: 1px solid var(--line); border-radius: 12px; padding: 0 10px; color: var(--ink-2); }
+.chapter-done { display: grid; gap: 2px; background: var(--a-soft); color: var(--a); border-radius: 4px; padding: 8px 12px; font-size: 13px; }
+.stage-row { display: grid; grid-template-columns: 44px minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 10px 4px; border-bottom: 1px dotted var(--line); }
+.stage-row.locked { opacity: .45; }
+.stage-row.next { background: color-mix(in srgb, var(--gold) 8%, transparent); border-radius: 4px; }
+.stage-id { font-variant-numeric: tabular-nums; color: var(--ink-3); font-size: 15px; text-align: center; }
+.stage-row.boss .stage-id { color: var(--b); font-weight: 700; }
+.stage-title { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+.stage-title b { font-size: 15px; }
+.stage-title span { font-size: 12px; }
+.enemy-chips { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; align-items: center; }
+.enemy-chip { font-size: 12px; border: 1px solid var(--line); border-radius: 3px; padding: 0 5px; }
+.enemy-chip small { margin-left: 3px; }
+.enemy-chip.boss { border-color: var(--b); color: var(--b); }
+.exp-note { font-size: 12px; margin-left: 4px; }
+.stage-side { display: grid; gap: 6px; justify-items: end; }
+.stage-btns { display: flex; gap: 4px; }
+.badge { font-size: 11px; padding: 0 6px; border-radius: 3px; white-space: nowrap; }
+.badge.ok { background: var(--a-soft); color: var(--a); }
+.badge.go { background: color-mix(in srgb, var(--gold) 18%, transparent); color: var(--gold); }
+.badge.lock { color: var(--ink-3); border: 1px solid var(--line); }
+
+.battle-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 10px; }
+.battle-head h2 { margin: 0; font-size: 18px; }
+.result-banner { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; border-radius: 6px; padding: 10px 14px; margin-bottom: 12px; border: 1px solid var(--line); background: var(--card); }
+.result-banner.win { border-color: var(--a); background: var(--a-soft); }
+.result-banner.lose { border-color: var(--b); background: var(--b-soft); }
+.rb-main { display: flex; gap: 6px 14px; align-items: baseline; flex-wrap: wrap; }
+.rb-title { font-size: 22px; letter-spacing: .2em; }
+.win .rb-title { color: var(--a); } .lose .rb-title { color: var(--b); }
+.lvup { color: var(--gold); font-weight: 700; }
+.first { font-weight: 600; }
+.rb-btns { display: flex; gap: 6px; flex-wrap: wrap; }
+.s0 .log { height: 420px; }
+
+@media (max-width: 860px) {
+  .s0-grid { grid-template-columns: 1fr; }
+  .role-cards { grid-template-columns: 1fr; }
+}
+@media (max-width: 600px) {
+  .stage-row { grid-template-columns: 36px minmax(0, 1fr); }
+  .stage-side { grid-column: 1 / -1; grid-template-columns: auto 1fr; justify-items: start; align-items: center; }
+  .stage-btns { justify-self: end; }
 }

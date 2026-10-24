@@ -68,8 +68,8 @@
       event: 'battleStart',
       effect: { kind: 'buffRow', stat: 'dmgUp', duration: 3 },
       desc: '开场时同排队友增伤 8%–15%（3 次行动）' },
-    // 名将专属（文档：名将专属天赋可以认具体技能）
-    pojunzhiwei: { name: '破军之威', tier: 'trigger', rare: true, exclusive: 'general', min: 1, max: 1,
+    // 名将专属（exclusive = 角色 id；文档：名将专属天赋可以认具体技能）
+    pojunzhiwei: { name: '破军之威', tier: 'trigger', rare: true, exclusive: 'huoxiao', min: 1, max: 1,
       event: 'kill',
       effect: { kind: 'cdReduce', tags: [], value: 2 },
       desc: '击杀时所有技能 CD −2' },

@@ -360,6 +360,7 @@
         target.hp = 0;
         target.shield = 0;
         attacker.stats.kills++;
+        attacker.stats.victims.push({ id: target.charId, level: target.level, exp: target.exp });
         this.emit(EV.KILL, { actor: attacker, target, skill });
         this.checkEnd();
       }
@@ -459,7 +460,7 @@
         time: this.time,
         recursionBlocked: this.recursionBlocked,
         units: this.units.map((u) => ({
-          uid: u.uid, side: u.side, name: u.name, title: u.title, row: u.row, role: u.role,
+          uid: u.uid, charId: u.charId, side: u.side, name: u.name, title: u.title, row: u.row, role: u.role, level: u.level,
           alive: u.alive, hp: u.hp, maxHp: u.base.maxHp, stats: u.stats,
         })),
         log: this.record ? this.log : null,

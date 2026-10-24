@@ -10,6 +10,7 @@ const FILES = [
   './config/skills.js',
   './config/talents.js',
   './config/characters.js',
+  './config/stage0.js',
   './core/events.js',
   './core/model.js',
   './battle/targeting.js',
@@ -17,6 +18,7 @@ const FILES = [
   './battle/engine.js',
   './battle/log.js',
   './battle/simulate.js',
+  './game/stage0.js',
 ];
 for (const f of FILES) require(f);
 module.exports = globalThis.DAO;

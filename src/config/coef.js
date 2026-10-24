@@ -40,8 +40,8 @@
       critDmgPerAgi: 0.002,     // 敏 100 → +0.2
       dodgeRatePerAgi: 0.0,     // 文档提到敏→闪避，但同时要求无随机浮动；V0 默认关闭，见 DESIGN_QUESTIONS
       dodgeRateCap: 0.3,
-      hpBase: 1000,
-      hpPerLevel: 40,
+      hpBase: 200,       // 气血 = (hpBase + hpPerLevel × 等级) × 定位倍率；阶段 0 起改为低等级友好的曲线
+      hpPerLevel: 60,
     },
 
     // ===== 五个乘区 =====
@@ -80,14 +80,11 @@
 
     // ===== 定位基础（气血倍率等） =====
     roles: {
-      sword:     { name: '剑修', hpMul: 1.0 },
-      mage:      { name: '法修', hpMul: 0.8 },
-      body:      { name: '体修', hpMul: 1.6 },
-      alchemist: { name: '丹修', hpMul: 0.9 },
-      formation: { name: '阵修', hpMul: 0.9 },
-      general:   { name: '名将', hpMul: 1.25 },
+      sword: { name: '剑修', hpMul: 1.0 },  // 近战物理
+      mage:  { name: '法修', hpMul: 0.8 },  // 远程法术
+      beast: { name: '妖兽', hpMul: 1.0 },  // 敌人：近战
+      demon: { name: '妖修', hpMul: 0.8 },  // 敌人：远程
     },
-
     // ===== 技能释放条件 =====
     cast: {
       healBelowHpRatio: 0.85, // 治疗 / 护盾：有队友低于该血量比例才放

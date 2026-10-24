@@ -3,6 +3,9 @@
  * 四个设计问题的验证实验。
  *   node cli/experiments.js [N]         每组对局 N 场（默认 1000），结果写入 docs/V0_SIM_REPORT.md
  *
+ * 阶段 0 起只用剑修、法修（体修、丹修、阵修已删除）。
+ * 第 3 节「辅助走防御区」依赖辅助定位，标记为 V0 遗留、不再维护；V0 原始数据见 docs/archive/V0_SIM_REPORT_v0.md。
+ *
  * 方法：大多用「镜像对局」——两边阵容完全相同，只改一个变量，看改动方的胜率偏离 50% 多少。
  * 每组都开 swapSides，抵消同速时的先后手偏差。
  */
@@ -43,16 +46,16 @@ function unit(sum, side, name) {
 }
 
 // ---------- 基准阵容 ----------
-const TEAM_A = team([['shigandang', 'front'], ['huoxiao', 'front'], ['liuwuying', 'back'], ['sujin', 'back'], ['linqingnang', 'back']]);
-const TEAM_B = team([['mengshan', 'front'], ['hantieyi', 'front'], ['chixiazi', 'back'], ['situyan', 'back'], ['baisu', 'back']]);
-const TEAM_B32 = setRow(TEAM_B, 'situyan', 'front');
-// 辅助实验用：去掉孟山的护体罡气，避免镜像里两边都回血导致大量回合上限平局
-const TEAM_S = setTalent(TEAM_B, 'mengshan', 'hutigangqi', 'changsheng');
+const TEAM_A = team([['huoxiao', 'front'], ['yueling', 'front'], ['liuwuying', 'back'], ['sujin', 'back'], ['chixiazi', 'back']]);
+const TEAM_B = team([['hantieyi', 'front'], ['qinshuang', 'front'], ['shenqingya', 'back'], ['wenruyu', 'back'], ['lufen', 'back']]);
+const TEAM_B32 = setRow(TEAM_B, 'shenqingya', 'front');
 
 const t0 = Date.now();
 log('# V0 战斗模拟报告');
 log();
 log(`> 由 \`node cli/experiments.js ${N}\` 生成。每组 ${N} 场，种子 1–${N}，开启换边。数值全部是占位值，结论看方向不看绝对值。`);
+log();
+log('> 阶段 0 起只剩剑修、法修。含体修 / 丹修 / 阵修的 V0 原始报告见 `docs/archive/V0_SIM_REPORT_v0.md`，`docs/DESIGN_QUESTIONS.md` 引用的是那份数据。');
 log();
 
 // ================= 基线 =================
@@ -60,7 +63,7 @@ log('## 0. 基线');
 log();
 {
   const s = vs(TEAM_A, TEAM_B);
-  log('默认阵容 A（守护体修+名将 前 / 刺客剑修+弹射法修+奶妈 后） vs B（嘲讽体修+剑修 前 / 单体法修+阵修+护盾丹修 后）');
+  log('默认阵容 A（名将+护体剑修 前 / 刺客剑修+弹射法修+单体法修 后） vs B（前排剑修+快剑剑修 前 / 横扫剑修+群攻法修+燎原法修 后）');
   log();
   log('```');
   log(DAO.Sim.report(s));
@@ -81,7 +84,7 @@ log('|---|---|---|---|---|---|---|');
 const trigTests = [
   ['liuwuying', 'jianxintongming', 'xinyan', '剑心通明（暴击时剑系 CD−1）', '心眼 暴击率+5.5%'],
   ['huoxiao', 'pojunzhiwei', 'lieren', '破军之威（击杀时全技能 CD−2，名将专属）', '裂刃 暴伤+20%'],
-  ['shigandang', 'hutigangqi', 'changsheng', '护体罡气（受击回血，每回合 2 次）', '长生 气血+14%'],
+  ['yueling', 'hutigangqi', 'changsheng', '护体罡气（受击回血，每回合 2 次）', '长生 气血+14%'],
 ];
 // 把可移植的触发天赋挂到同一个角色上比较
 const portable = [
@@ -153,9 +156,9 @@ const mageVariants = {
   '全体（连珠火·散 + 烈焰）': patch(TEAM_A, 'sujin', (ch) => { ch.activeCard = { id: 'lieyan', roll: 0.6 }; }),
 };
 const opponents = {
-  'B 2前3后（含嘲讽）': TEAM_B,
-  'B 3前2后（含嘲讽）': TEAM_B32,
-  'A 镜像（含守护）': TEAM_A,
+  'B 2前3后': TEAM_B,
+  'B 3前2后': TEAM_B32,
+  'A 镜像': TEAM_A,
 };
 log('| 苏烬配置 | 对手 | 胜率 | 苏烬伤害占比 | 苏烬场均伤害 | 主技能每次伤害 | 主技能 CV | 卡技能每次伤害 | 卡技能 CV |');
 log('|---|---|---|---|---|---|---|---|---|');
@@ -179,61 +182,14 @@ for (const [vn, arr] of Object.entries(bounceDmg)) {
   log(`- ${vn}：主技能 ${pct(spread(arr.map((x) => x[0])))}，卡技能 ${pct(spread(arr.map((x) => x[1])))}`);
 }
 log();
-{
-  // 守护挡不挡弹射
-  const old = DAO.CONFIG.guard.coversBounce;
-  DAO.CONFIG.guard.coversBounce = true;
-  const s = vs(TEAM_A, TEAM_A);
-  const sb = vs(mageVariants['单体（赤焰·凝 + 火雨）'], TEAM_A);
-  DAO.CONFIG.guard.coversBounce = old;
-  log(`对照：若守护也替后排挡弹射（guard.coversBounce=true），镜像中石敢当场均代受 ${unit(s, 'A', '石敢当').redirected.toFixed(1)} 次；单体苏烬 vs 弹射苏烬镜像胜率 ${pct(sb.winRate.A)}。`);
-  log();
-}
+log('（V0 里的「守护挡弹射」对照依赖体修，已移除。）');
+log();
 
-// ================= 3. 辅助走防御区 =================
-log('## 3. 辅助走防御区有没有存在感');
+// ================= 3. 辅助走防御区（V0 遗留，不再维护） =================
+log('## 3. 辅助走防御区有没有存在感（V0 遗留，不再维护）');
 log();
-log('做法：以 B 队为底（阵修司徒衍 + 护盾丹修白素，都在后排；孟山的护体罡气换成长生，避免镜像拖到回合上限），镜像对局里只改辅助的配置。「贡献」= 把该辅助施加的 buff / debuff 拿掉重算伤害的差值。');
+log('这一节依赖阵修、丹修，阶段 0 删除辅助定位后无法运行。V0 结论和数据见 `docs/archive/V0_SIM_REPORT_v0.md` 与 `docs/DESIGN_QUESTIONS.md` Q3。');
 log();
-const supVariants = [
-  ['阵修 2选1：壁（同排护甲/法抗）vs 锋（同排增伤）', setBranch(TEAM_S, 'situyan', 1), TEAM_S],
-  ['阵修主动卡：固元符（全队护甲/法抗）vs 破甲符', setCard(TEAM_S, 'situyan', 'activeCard', 'guyuan'), TEAM_S],
-  ['阵修主动卡：疾风阵（全队推条）vs 破甲符', setCard(TEAM_S, 'situyan', 'activeCard', 'jifeng'), TEAM_S],
-  ['阵修主动卡：破甲符 vs 空卡槽', TEAM_S, setCard(TEAM_S, 'situyan', 'activeCard', null)],
-  ['丹修主动卡：固元符（全队护甲/法抗）vs 护盾符（白素默认）', setCard(TEAM_S, 'baisu', 'activeCard', 'guyuan'), TEAM_S],
-  ['丹修主动卡：固元符 vs 空卡槽', setCard(TEAM_S, 'baisu', 'activeCard', 'guyuan'), setCard(TEAM_S, 'baisu', 'activeCard', null)],
-  ['丹修主动卡：护盾符 vs 空卡槽', TEAM_S, setCard(TEAM_S, 'baisu', 'activeCard', null)],
-  ['把阵修换成输出（柳无影）vs 保留阵修', (() => { const l = clone(TEAM_S); l[3] = { charId: 'liuwuying', row: 'back' }; return l; })(), TEAM_S],
-];
-log('| 变量 | 前者胜 | 后者胜 | 平局 | 平均回合 |');
-log('|---|---|---|---|---|');
-for (const [name, x, y] of supVariants) {
-  const s = vs(x, y);
-  log(`| ${name} | **${pct(s.winRate.A)}** | ${pct(s.winRate.B)} | ${pct(s.winRate.draw)} | ${s.avgRounds.toFixed(1)} |`);
-}
-log();
-{
-  const s = vs(TEAM_S, TEAM_S);
-  const st = unit(s, 'A', '司徒衍');
-  const bs = unit(s, 'A', '白素');
-  const top = s.units.filter((u) => u.side === 'A').sort((a, b) => b.dmg - a.dmg)[0];
-  log(`B 镜像中的场均贡献（参照：本队输出最高的 ${top.name} 场均伤害 ${num(top.dmg)}）：`);
-  log();
-  log(`- 司徒衍：破甲 ${num(st.armorBreak)}，增伤 buff ${num(st.dmgBuff)}，减伤 ${num(st.armorBuff)}，自身伤害 ${num(st.dmg)} → 合计 ${num(st.armorBreak + st.dmgBuff + st.armorBuff + st.dmg)}`);
-  log(`- 白素：减伤 ${num(bs.armorBuff)}，治疗 ${num(bs.heal)}，护盾吸收 ${num(bs.shieldAbsorbed)}，自身伤害 ${num(bs.dmg)} → 合计 ${num(bs.armorBuff + bs.heal + bs.shieldAbsorbed + bs.dmg)}`);
-  log();
-}
-{
-  // 破甲对坦克 vs 脆皮：破甲符目标规则改成随机
-  const card = DAO.CONFIG.cards.pojia;
-  const old = card.skill.targetRule;
-  card.skill.targetRule = 'default';
-  const sRand = vs(TEAM_S, TEAM_A);
-  card.skill.targetRule = old;
-  const sDef = vs(TEAM_S, TEAM_A);
-  log(`破甲符目标选择：打最高护甲目标时司徒衍场均破甲贡献 ${num(unit(sDef, 'A', '司徒衍').armorBreak)}；随机目标时 ${num(unit(sRand, 'A', '司徒衍').armorBreak)}。`);
-  log();
-}
 
 // ================= 4. 前后排 =================
 log('## 4. 前后排人数分配有没有真实取舍');
@@ -244,12 +200,12 @@ const formA = {
   'A 2前3后（默认）': TEAM_A,
   'A 3前2后（柳无影上前）': setRow(TEAM_A, 'liuwuying', 'front'),
   'A 3前2后（苏烬上前）': setRow(TEAM_A, 'sujin', 'front'),
-  'A 3前2后（林青囊上前）': setRow(TEAM_A, 'linqingnang', 'front'),
+  'A 3前2后（赤霞子上前）': setRow(TEAM_A, 'chixiazi', 'front'),
 };
 const formB = {
   'B 2前3后（默认）': TEAM_B,
-  'B 3前2后（司徒衍上前）': TEAM_B32,
-  'B 3前2后（赤霞子上前）': setRow(TEAM_B, 'chixiazi', 'front'),
+  'B 3前2后（沈青崖上前）': TEAM_B32,
+  'B 3前2后（温如玉上前）': setRow(TEAM_B, 'wenruyu', 'front'),
   'A 后排AOE版 2前3后': mageVariants['后排（连珠火·落 + 火雨）'],
 };
 log('A 各站位对 B 各站位的胜率（A 方）：');
@@ -267,9 +223,9 @@ log();
 const pairs = [
   ['A 3前2后（柳无影上前）', 'A 2前3后（默认）', formA],
   ['A 3前2后（苏烬上前）', 'A 2前3后（默认）', formA],
-  ['A 3前2后（林青囊上前）', 'A 2前3后（默认）', formA],
-  ['B 3前2后（司徒衍上前）', 'B 2前3后（默认）', formB],
-  ['B 3前2后（赤霞子上前）', 'B 2前3后（默认）', formB],
+  ['A 3前2后（赤霞子上前）', 'A 2前3后（默认）', formA],
+  ['B 3前2后（沈青崖上前）', 'B 2前3后（默认）', formB],
+  ['B 3前2后（温如玉上前）', 'B 2前3后（默认）', formB],
 ];
 for (const [x, y, src] of pairs) {
   const s = vs(src[x], src[y]);
@@ -280,11 +236,11 @@ log();
   // 规则外参考：放开到每排 4 人
   const old = DAO.CONFIG.formation.maxPerRow;
   DAO.CONFIG.formation.maxPerRow = 4;
-  const one = setRow(setRow(TEAM_A, 'huoxiao', 'back'), 'liuwuying', 'back');
+  const one = setRow(TEAM_A, 'huoxiao', 'back');
   const s1 = vs(one, TEAM_A);
   const sB = vs(one, TEAM_B);
   DAO.CONFIG.formation.maxPerRow = old;
-  log(`规则外参考（每排上限放开到 4）：A 1前4后（只留石敢当）vs A 默认 2前3后 胜率 ${pct(s1.winRate.A)}；vs B 默认 ${pct(sB.winRate.A)}。`);
+  log(`规则外参考（每排上限放开到 4）：A 1前4后（只留岳凌）vs A 默认 2前3后 胜率 ${pct(s1.winRate.A)}；vs B 默认 ${pct(sB.winRate.A)}。`);
   log();
 }
 

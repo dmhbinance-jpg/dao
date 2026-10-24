@@ -44,11 +44,15 @@
     return String(Math.round(v));
   };
 
-  UI.store = {
-    get(k, d) { try { const s = localStorage.getItem('dao.v0.' + k); return s ? JSON.parse(s) : d; } catch (e) { return d; } },
-    set(k, v) { try { localStorage.setItem('dao.v0.' + k, JSON.stringify(v)); } catch (e) { /* 存储不可用时忽略 */ } },
-    del(k) { try { localStorage.removeItem('dao.v0.' + k); } catch (e) { /* ignore */ } },
+  /** 本地存储，按前缀隔离（V0 用 dao.v0.，阶段 0 用 dao.s0.）；读写失败时静默退回默认值 */
+  UI.makeStore = function (prefix) {
+    return {
+      get(k, d) { try { const s = localStorage.getItem(prefix + k); return s ? JSON.parse(s) : d; } catch (e) { return d; } },
+      set(k, v) { try { localStorage.setItem(prefix + k, JSON.stringify(v)); } catch (e) { /* 存储不可用时忽略 */ } },
+      del(k) { try { localStorage.removeItem(prefix + k); } catch (e) { /* ignore */ } },
+    };
   };
+  UI.store = UI.makeStore('dao.v0.');
 
   UI.ROW_NAME = { front: '前排', back: '后排' };
   UI.TIER_NAME = { stat: '属性型', tag: '标签型', trigger: '触发型' };

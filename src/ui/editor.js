@@ -152,7 +152,7 @@
     (o.talents || []).forEach((t, i) => {
       const def = C.talents[t.id];
       const groups = ['stat', 'tag', 'trigger'].map((tier) => h('optgroup', { label: UI.TIER_NAME[tier] },
-        Object.entries(C.talents).filter(([, d]) => d.tier === tier && (!d.exclusive || d.exclusive === o.role))
+        Object.entries(C.talents).filter(([, d]) => d.tier === tier && (!d.exclusive || d.exclusive === o.id))
           .map(([id, d]) => h('option', { value: id, selected: id === t.id }, d.name))));
       const sel = h('select', { onchange: (ev) => { o.talents[i] = { id: ev.target.value, roll: 0.5 }; UI.changed(); } }, groups);
       const parts = [sel];
