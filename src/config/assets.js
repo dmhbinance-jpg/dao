@@ -77,6 +77,10 @@
       // 装备
       'gear.weapon': null,                 // 装备：武器
       'gear.chest': null,                  // 装备：胸甲
+      'gear.gloves': null,                 // 装备：护手
+      'gear.boots': null,                  // 装备：靴子
+      'gear.amulet': null,                 // 装备：项链
+      'gear.ring': null,                   // 装备：戒指
     },
   };
 

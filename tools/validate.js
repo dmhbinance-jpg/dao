@@ -2,7 +2,8 @@
  * 配置项校验与分组（配置网站和本地服务共用；不被游戏加载）。
  *   DAO.ConfigRules.validate(path, value, def, cfg) → null | 错误说明
  *   DAO.ConfigRules.group(path) → { id, name }       按模块分组
- *   DAO.ConfigRules.PINNED → 常用项（置顶），DAO.ConfigRules.label(path) → 中文名（只给常用项和部分项）
+ *   DAO.ConfigRules.PINNED → 常用项（置顶），DAO.ConfigRules.label(path) → 中文名（只给常用项和部分项；其余由 entities.js 的 autoLabel 生成）
+ *   DAO.ConfigRules.GROUP_NAMES → 模块中文名
  */
 (function (root) {
   'use strict';
@@ -39,7 +40,9 @@
     'game.roster.cap': '名额（总人数上限）',
     'game.research.slots.stageCap': '本阶段上阵位最多研究到',
     'game.gather.minFactor': '采集资质系数下限',
-    'game.gather.refStrGrowth': '采集资质系数的力成长参考值',
+    'game.gather.refGrowth': '采集资质系数的成长参考值（灵矿看力、灵草看敏、灵石看智）',
+    'game.buildings.costMult': '建筑每升一级花费倍率', 'game.buildings.maxLevel': '建筑等级上限',
+    'game.salvage.surplusMin': '推荐分解：多余装备至少几件', 'game.salvage.tidyAt': '「整理装备」引导：背包几件时弹',
     'game.exp.base': '升级经验基数', 'game.exp.power': '升级经验指数',
     'game.idle.speed': '挂机战斗计时倍率', 'game.idle.gapMs': '挂机两场间隔（毫秒）',
     'game.maxLevel': '等级上限',
@@ -52,7 +55,8 @@
     'game.starters': '开局角色', 'game.roster': '名额 / 站位', 'game.enemies': '敌人', 'game.chapters': '引导关', 'game.cards': '卡牌掉落',
     'game.exp': '经验', 'game.gold': '金币', 'game.recruit': '招募', 'game.research': '研究', 'game.auto': '自动推关', 'game.gather': '采集',
     'game.forge': '锻造线', 'game.production': '生产线 / 品质', 'game.settings': '默认设置', 'game.idle': '挂机', 'game.estimate': '时长估算（命令行）', 'game.migration': '存档迁移',
-    'game.quota': '名额扩建（预留）',
+    'game.quota': '名额扩建（预留）', saves: '存档（存档位 / 备份）',
+    'game.tailor': '裁缝线', 'game.jewelry': '饰品线', 'game.buildings': '洞府建筑', 'game.salvage': '出售 / 分解',
   };
   function group(path) {
     const segs = DAO.Tuning.parse(path);
@@ -63,10 +67,18 @@
   // ---- 范围规则：按路径匹配，先匹配先用 ----
   const RULES = [
     [/^debug\.timeScale$/, { enum: [1, 2, 5, 10] }],
+    [/^saves\.(slots|backups|originals)$/, { min: 1, max: 20, int: true }],
+    [/^saves\.(backupEveryMs|diskThrottleMs)$/, { min: 0, max: 86400000, int: true }],
     [/research\.slots\.levels\.\d+\.sec$/, { min: 1, max: 86400 }],
     [/research\.slots\.(start|max|stageCap)$/, { min: 1, max: 6, int: true }],
     [/^game\.roster\.cap$/, { min: 1, max: 50, int: true }],
-    [/recipes\.\w+\.cost\.(ore|gold)$/, { min: 0, max: 1e6 }],
+    [/recipes\.\w+\.cost\.(ore|herb|stone|gold)$/, { min: 0, max: 1e6 }],
+    [/^game\.buildings\.costMult$/, { min: 1, max: 10 }],
+    [/^game\.buildings\.maxLevel$/, { min: 1, max: 10, int: true }],
+    [/^game\.buildings\.list\.\w+\.slots\.\d+$/, { min: 0, max: 20, int: true }],
+    [/^game\.buildings\.list\.\w+\.cost\.(ore|herb|stone|gold)$/, { min: 0, max: 1e7 }],
+    [/^game\.salvage\.(sell|salvage)\.\w+$/, { min: 0, max: 1 }],
+    [/^game\.salvage\.(surplusMin|tidyAt)$/, { min: 1, max: 1000, int: true }],
     [/recipes\.\w+\.baseSec$/, { min: 1, max: 86400 }],
     [/qualityTables\.\d+\.\d+$/, { min: 0, max: 100 }],
     [/^game\.recruit\.cost$/, { min: 0, max: 1e6 }],
@@ -116,5 +128,5 @@
     return null;
   }
 
-  DAO.ConfigRules = { PINNED, LABELS, label: (p) => LABELS[p] || '', group, validate };
+  DAO.ConfigRules = { PINNED, LABELS, GROUP_NAMES, label: (p) => LABELS[p] || '', group, validate };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

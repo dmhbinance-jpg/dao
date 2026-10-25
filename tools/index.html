@@ -13,7 +13,8 @@
   <nav class="tnav"><a class="on" href="./">调参</a><a href="save.html">存档工具</a><a href="../" target="_blank">打开游戏 ↗</a></nav>
 </header>
 <div class="tbar" id="tbar">
-  <input id="search" type="search" placeholder="搜索配置项（路径或中文名，例如 research、采集、costs）" autocomplete="off">
+  <div class="vtabs" id="views" role="tablist"><button type="button" data-view="entity">按对象</button><button type="button" data-view="flat">按字段</button></div>
+  <input id="search" type="search" placeholder="搜索" autocomplete="off">
   <label class="check"><input type="checkbox" id="only-changed"> 只看改过的</label>
   <span class="grow"></span>
   <span id="status" class="muted"></span>
@@ -25,8 +26,9 @@
   <section id="list" class="tlist"></section>
 </main>
 <div class="toasts" id="toasts" aria-live="polite"></div>
+<datalist id="dl-assets"></datalist>
 
-<!-- 只加载默认配置（不加载 tuning.js），当前值从本地服务读 -->
+<!-- 只加载默认配置（不加载 tuning.js），当前值从本地服务读；model.js 只用来算「按对象」里的属性预览 -->
 <script src="../src/core/tags.js"></script>
 <script src="../src/core/rng.js"></script>
 <script src="../src/config/coef.js"></script>
@@ -36,8 +38,10 @@
 <script src="../src/config/game.js"></script>
 <script src="../src/config/assets.js"></script>
 <script src="../src/config/apply-tuning.js"></script>
+<script src="../src/core/model.js"></script>
 <script src="validate.js"></script>
 <script src="../src/ui/util.js"></script>
+<script src="entities.js"></script>
 <script src="config.js"></script>
 </body>
 </html>

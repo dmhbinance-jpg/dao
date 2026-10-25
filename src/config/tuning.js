@@ -6,5 +6,7 @@
 (function (root) {
   'use strict';
   const DAO = (root.DAO = root.DAO || {});
-  DAO.TUNING = {};
+  DAO.TUNING = {
+    "game.forge.recipes.weapon.baseSec": 10,
+  };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

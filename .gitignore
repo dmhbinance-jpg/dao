@@ -14,6 +14,9 @@ out/
 .env.*
 !.env.example
 
+# 存档（本地服务写到硬盘的存档，阶段 3.7）
+saves/
+
 # 日志
 logs/
 *.log

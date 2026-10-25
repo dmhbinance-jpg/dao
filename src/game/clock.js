@@ -3,6 +3,7 @@
  * 研究倒计时、采集、挂机、战斗播放都从这里取 now，倍率只改时间流速，不改战斗结果。
  * 每次读取只累加两次读取之间的真实流逝，所以运行中不会出现时间跳变；真实时钟倒退时不倒退。
  * 纯逻辑，不碰 DOM。
+ * 对外：DAO.GameClock.create。不读写存档（时钟状态由界面调 DAO.Game.setClock 写进存档的 clock 字段）。
  *
  *   const clock = DAO.GameClock.create({ scale, realNow, saved })
  *     saved = 存档里的 { game, real }：从上次保存的游戏时间继续；页面关闭期间的真实流逝也按倍率计入

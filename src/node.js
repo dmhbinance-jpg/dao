@@ -28,7 +28,20 @@ const FILES = [
   './battle/log.js',
   './battle/simulate.js',
   './game/clock.js',
-  './game/game.js',
+  './game/common.js',
+  './game/save.js',
+  './game/economy.js',
+  './game/roster.js',
+  './game/progress.js',
+  './game/recruit.js',
+  './game/research.js',
+  './game/buildings.js',
+  './game/production.js',
+  './game/equipment.js',
+  './game/cards.js',
+  './game/guide.js',
+  './game/auto.js',
+  './game/save-slots.js',
 ];
 for (const f of FILES) if (f) require(f);
 module.exports = globalThis.DAO;

@@ -10,12 +10,12 @@
 </head>
 <body class="s0 s1">
 <header class="top s1-top">
-  <div class="brand"><span class="seal">道</span><div><b>青石山</b><small>阶段 3.6 · 锻造改版 · 数值均为占位</small></div></div>
+  <div class="brand"><span class="seal">道</span><div><b>青石山</b><small>阶段 4a · 生产补完 · 数值均为占位</small></div></div>
   <div class="s1-chips" id="chips"></div>
   <nav class="s1-nav" id="nav"></nav>
   <div class="s1-tools">
     <a href="v0.html" class="navlink">V0 模拟器</a>
-    <button id="reset-btn" type="button">重新开始</button>
+    <button id="save-btn" type="button" title="手动保存、回到标题页">存档</button>
   </div>
 </header>
 <div class="activity" id="activity" hidden></div>
@@ -49,11 +49,35 @@
 <script src="src/battle/simulate.js"></script>
 <!-- 游戏规则（纯逻辑） -->
 <script src="src/game/clock.js"></script>
-<script src="src/game/game.js"></script>
+<script src="src/game/common.js"></script>
+<script src="src/game/save.js"></script>
+<script src="src/game/economy.js"></script>
+<script src="src/game/roster.js"></script>
+<script src="src/game/progress.js"></script>
+<script src="src/game/recruit.js"></script>
+<script src="src/game/research.js"></script>
+<script src="src/game/buildings.js"></script>
+<script src="src/game/production.js"></script>
+<script src="src/game/equipment.js"></script>
+<script src="src/game/cards.js"></script>
+<script src="src/game/guide.js"></script>
+<script src="src/game/auto.js"></script>
+<script src="src/game/save-slots.js"></script>
 <!-- UI -->
 <script src="src/ui/util.js"></script>
 <script src="src/ui/render-text.js"></script>
 <script src="src/ui/battleview.js"></script>
-<script src="src/ui/game-app.js"></script>
+<script src="src/ui/save-disk.js"></script>
+<script src="src/ui/app-core.js"></script>
+<script src="src/ui/app-title.js"></script>
+<script src="src/ui/app-activity.js"></script>
+<script src="src/ui/app-stages.js"></script>
+<script src="src/ui/app-cave.js"></script>
+<script src="src/ui/app-workshop.js"></script>
+<script src="src/ui/app-roster.js"></script>
+<script src="src/ui/app-bag.js"></script>
+<script src="src/ui/app-modal.js"></script>
+<script src="src/ui/app-flow.js"></script>
+<script src="src/ui/app-main.js"></script>
 </body>
 </html>

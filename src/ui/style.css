@@ -527,3 +527,49 @@ img.gear-icon, img.card-icon { width: 28px; height: 28px; border-radius: 3px; }
 .gq-chip.gq-purple { color: var(--gq-purple); } .gq-chip.gq-orange { color: var(--gq-orange); } .gq-chip.gq-red { color: var(--gq-red); }
 .act-fill.craft { background: var(--gold); }
 .char-card.st-craft { border-left: 3px solid var(--gold); }
+
+/* ===== 阶段 3.7：标题页、存档位 ===== */
+body.at-title #chips, body.at-title #nav, body.at-title #save-btn, body.at-title #activity { display: none !important; }
+.title-wait { padding: 40px 20px; text-align: center; }
+.title-page { max-width: 760px; margin: 0 auto; padding: 32px 16px 48px; }
+.title-head { display: flex; align-items: center; gap: 16px; margin-bottom: 24px; }
+.title-head h1 { margin: 0; font-size: 30px; letter-spacing: 0.1em; }
+.title-head p { margin: 4px 0 0; }
+.seal.big { width: 64px; height: 64px; font-size: 36px; border-radius: 6px; }
+.title-menu { display: flex; flex-direction: column; gap: 10px; max-width: 360px; }
+.title-menu .big-btn { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 12px 16px; font-size: 16px; text-align: left; }
+.title-menu .big-btn small { font-size: 12px; color: inherit; opacity: 0.75; }
+.title-panel h2 { margin: 0 0 4px; }
+.slot-card { display: grid; grid-template-columns: 84px 1fr auto; gap: 12px; align-items: center; background: var(--card); border: 1px solid var(--line); border-radius: 6px; padding: 12px 14px; margin: 10px 0; }
+.slot-card.empty { background: transparent; border-style: dashed; }
+.slot-card.bad { border-color: var(--b); }
+.slot-no { font-weight: 600; color: var(--ink-2); }
+.slot-info { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.save-acts { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; }
+.backup-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+.title-back { margin-top: 18px; }
+.title-page .lack, .forge-card .lack, .activity .lack { color: var(--b); }
+@media (max-width: 560px) {
+  .slot-card { grid-template-columns: 1fr; }
+  .save-acts { justify-content: flex-start; }
+}
+
+/* ===== 阶段 4a：建筑、多工位、装备背包批量处理、三种原料 ===== */
+.bld-list { display: flex; flex-direction: column; gap: 6px; }
+.bld-row { display: grid; grid-template-columns: 110px 1fr auto; gap: 10px; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--line); }
+.bld-row.locked { opacity: .55; }
+.bld-info { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.bld-act { display: flex; align-items: center; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
+.station { border-top: 1px dashed var(--line); padding-top: 8px; margin-top: 8px; }
+.station.free .forge-preview { margin-top: 4px; }
+.bag-batch { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 8px 0; }
+.bag-batch .check { margin: 0; }
+.gear-bag-row .gs-btns { display: inline-flex; gap: 4px; flex-wrap: wrap; justify-content: flex-end; }
+.gear-slot.locked { opacity: .5; }
+.muted-card { background: transparent; border-style: dashed; }
+.chip-stat.mat-herb b { color: #5f9a52; }
+.chip-stat.mat-stone b { color: #7a8fb3; }
+@media (max-width: 560px) {
+  .bld-row { grid-template-columns: 1fr; }
+  .bld-act { justify-content: flex-start; }
+}

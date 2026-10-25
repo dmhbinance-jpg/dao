@@ -5,9 +5,11 @@
  *  - enemies   敌人模板：三维 = base + growth × 等级，与玩家角色同一套公式
  *  - chapters  引导关：第一段青石山（1-4 卡关，单人难过、两人能过）、第二段黑风林（首领狐王，第一张卡能解）
  *  - cards     技能卡：第一张卡、卡池、掉落率、招募自带卡
- *  - gather    采集：闲置角色派去采灵矿，按秒连续产出（力资质越高越快），不补离线
- *  - production 生产线：锻造（力）/ 裁缝（敏）/ 饰品（智），各 2 个部位；品质 6 档按工坊等级掷出；打造占用角色、要时间
- *  - forge     锻造线：武器、胸甲的基础数值、花费、时长
+ *  - gather    采集：三种原料（灵矿 / 灵草 / 灵石），速率看对应三维（力 / 敏 / 智），按秒连续产出，不补离线
+ *  - production 生产线：锻造（力、灵矿）/ 裁缝（敏、灵草）/ 饰品（智、灵石），各 2 个部位；品质 6 档按制造建筑等级掷出
+ *  - forge / tailor / jewelry  三条线的部位配方：基础数值、花费、时长
+ *  - buildings 洞府建筑（阶段 4a）：三个采集建筑定采集工位，三个制造建筑定制造工位和品质概率表；升级花金币 + 原料
+ *  - salvage   装备出售 / 分解（阶段 4a）：按品质的比例
  *  - exp/gold  击杀经验与金币
  *  - recruit   洞府招募（抽卡）：首抽免费且保底互补定位；品质决定资质区间和天赋条数
  *  - research  研究：只有「上阵位」一条，每级 +1，从 1 到 5；研究占用一个角色
@@ -21,7 +23,7 @@
   const DAO = (root.DAO = root.DAO || {});
 
   DAO.CONFIG.game = {
-    saveVersion: 6,
+    saveVersion: 8,
 
     // ===== 开局角色 =====
     starters: {
@@ -275,23 +277,28 @@
     // 采集中的角色不能上阵、不能研究、不拿经验。离线不计算：关掉页面期间的产出不补。
     gather: {
       unlockStage: '1-8',        // 这一关首次通关时开放采集和锻造房，引导：招募（3 选 1）→ 新人没有上阵位 → 去采集 → 打第一件装备
-      oreName: '灵矿',
       perSec: 0.7,               // 资质系数 1.0 的角色每秒产出（阶段 3.5：1.0 → 0.7，采集提前后灵矿不再过剩）
-      refStrGrowth: 3.0,         // 资质系数 = 力成长 ÷ 3.0（开局剑修 = 1.0）
-      minFactor: 0.5,            // 资质系数下限（法修力成长低，也不至于完全没用）
+      refGrowth: 3.0,            // 资质系数 = 对应三维的成长 ÷ 3.0（开局剑修采灵矿 = 1.0）
+      minFactor: 0.5,            // 资质系数下限
+      // 三种原料：名字、速率看哪项三维、在哪个采集建筑（决定采集工位数）、属于哪条生产线
+      mats: {
+        ore: { name: '灵矿', stat: 'str', building: 'mine', line: 'forge' },
+        herb: { name: '灵草', stat: 'agi', building: 'garden', line: 'tailor' },
+        stone: { name: '灵石', stat: 'int', building: 'quarry', line: 'jewelry' },
+      },
     },
 
-    // ===== 生产线（设计文档第 10 节）：三条线各 2 个部位，打造值分别用力 / 敏 / 智 =====
-    // 本阶段只开锻造线；裁缝、饰品先占位（enabled: false），以后加线只改配置。
-    // 打造要派一个角色去做（占用他，期间不能上阵 / 研究 / 采集，不拿经验），按游戏时钟计时，离线不计算。
+    // ===== 生产线（设计文档第 10 节）：三条线各 2 个部位，打造值和采集速率分别看力 / 敏 / 智 =====
+    // 锻造在 1-8 开放；裁缝和饰品在第三段通关时开放（unlockChapter）。
+    // 打造要派一个角色去做（占用他，期间不能上阵 / 研究 / 采集，不拿经验），持续制造，按游戏时钟计时，离线不计算。
     production: {
       lines: {
-        forge: { name: '锻造', building: '锻造房', stat: 'str', slots: ['weapon', 'chest'], enabled: true },
-        tailor: { name: '裁缝', building: '裁缝铺', stat: 'agi', slots: ['boots', 'gloves'], enabled: false },
-        jewelry: { name: '饰品', building: '饰品坊', stat: 'int', slots: ['ring', 'amulet'], enabled: false },
+        forge: { name: '锻造', building: 'forge', stat: 'str', mat: 'ore', slots: ['weapon', 'chest'], enabled: true },
+        tailor: { name: '裁缝', building: 'loom', stat: 'agi', mat: 'herb', slots: ['gloves', 'boots'], enabled: true, unlockChapter: 'tieyan' },
+        jewelry: { name: '饰品', building: 'jade', stat: 'int', mat: 'stone', slots: ['amulet', 'ring'], enabled: true, unlockChapter: 'tieyan' },
       },
-      slotNames: { weapon: '武器', chest: '胸甲', boots: '靴子', gloves: '护手', ring: '戒指', amulet: '项链' },
-      // 品质：打造时按工坊等级查概率表掷出，不能选；数值 = 部位基础数值 × 品质倍率
+      slotNames: { weapon: '武器', chest: '胸甲', gloves: '护手', boots: '靴子', amulet: '项链', ring: '戒指' },
+      // 品质：打造时按制造建筑等级查概率表掷出，不能选；数值 = 部位基础数值 × 品质倍率
       qualities: [
         { id: 'white', name: '白', mult: 1.0 },
         { id: 'green', name: '绿', mult: 1.25 },
@@ -300,7 +307,7 @@
         { id: 'orange', name: '橙', mult: 2.6 },
         { id: 'red', name: '红', mult: 3.4 },
       ],
-      // 工坊等级 → 各品质概率（百分比，按 qualities 的顺序）。1 级先定，其他等级占位（升级以后做）
+      // 制造建筑等级 → 各品质概率（百分比，按 qualities 的顺序）。2–5 级占位
       qualityTables: {
         1: [90, 10, 0, 0, 0, 0],
         2: [80, 18, 2, 0, 0, 0],
@@ -308,11 +315,12 @@
         4: [60, 28, 9, 2.5, 0.5, 0],
         5: [50, 30, 13, 5, 1.8, 0.2],
       },
-      // 打造时长 = 部位 baseSec ÷ (1 + 打造值 × statCoef)，打造值 = 打造者的力 / 敏 / 智（占位公式，以后再定）
+      // 每件的打造时长 = 部位 baseSec ÷ (1 + 打造值 × statCoef)，打造值 = 打造者的力 / 敏 / 智（占位公式，以后再定）
+      // 派人后持续制造：一件接一件，每件开工时扣材料，材料不够就等，召回时退还当前这件
       craft: { statCoef: 0.01 },
     },
 
-    // ===== 锻造线（力）：武器、胸甲 =====
+    // ===== 锻造线（力、灵矿）：武器、胸甲 =====
     forge: {
       // 部位：基础数值（白品质）、每件花费、基础打造时长（秒）
       recipes: {
@@ -323,10 +331,52 @@
       stuckGuideChapters: ['tieyan'], // 这些章节在最新关战败时排队「该去补装备了」引导
     },
 
+    // ===== 裁缝线（敏、灵草）：护手、靴子（数值占位） =====
+    tailor: {
+      recipes: {
+        gloves: { art: 'gear.gloves', name: '灵蚕护手', desc: '加敏捷和攻击', base: { agi: 6, atk: 6 }, cost: { herb: 60, gold: 150 }, baseSec: 40 },
+        boots: { art: 'gear.boots', name: '踏云靴', desc: '加敏捷和气血', base: { agi: 8, hp: 120 }, cost: { herb: 60, gold: 150 }, baseSec: 40 },
+      },
+    },
+
+    // ===== 饰品线（智、灵石）：项链、戒指（数值占位） =====
+    jewelry: {
+      recipes: {
+        amulet: { art: 'gear.amulet', name: '温玉坠', desc: '加智力和法抗', base: { int: 8, resist: 12 }, cost: { stone: 60, gold: 150 }, baseSec: 40 },
+        ring: { art: 'gear.ring', name: '灵石戒', desc: '加力量和智力', base: { str: 4, int: 4 }, cost: { stone: 60, gold: 150 }, baseSec: 40 },
+      },
+    },
+
+    // ===== 洞府建筑（阶段 4a，数值占位）=====
+    // 采集建筑：等级 → 这种原料的采集工位数（同时能派几个人）；制造建筑：等级 → 制造工位数，品质概率表按等级（production.qualityTables）。
+    // 升级即时完成，花金币 + 对应原料：第 L 级升到 L+1 的花费 = cost × costMult^(L-1)（取整）。上限 maxLevel。
+    buildings: {
+      maxLevel: 5,
+      costMult: 2,
+      list: {
+        mine: { name: '矿脉', kind: 'gather', mat: 'ore', slots: [3, 4, 5, 6, 8], cost: { gold: 400, ore: 80 } },
+        garden: { name: '药园', kind: 'gather', mat: 'herb', slots: [3, 4, 5, 6, 8], cost: { gold: 400, herb: 80 } },
+        quarry: { name: '灵石矿', kind: 'gather', mat: 'stone', slots: [3, 4, 5, 6, 8], cost: { gold: 400, stone: 80 } },
+        forge: { name: '锻造房', kind: 'craft', line: 'forge', slots: [1, 1, 2, 2, 3], cost: { gold: 600, ore: 120 } },
+        loom: { name: '织坊', kind: 'craft', line: 'tailor', slots: [1, 1, 2, 2, 3], cost: { gold: 600, herb: 120 } },
+        jade: { name: '琢玉坊', kind: 'craft', line: 'jewelry', slots: [1, 1, 2, 2, 3], cost: { gold: 600, stone: 120 } },
+      },
+    },
+
+    // ===== 装备出售与分解（阶段 4a，数值占位）=====
+    // 出售：金币 = 配方金币花费 × sell[品质]；分解：返还这条线的原料 = 配方原料花费 × salvage[品质]（都取整）。穿在身上的不能处理。
+    salvage: {
+      sell: { white: 0.2, green: 0.3, blue: 0.45, purple: 0.6, orange: 0.8, red: 1.0 },
+      salvage: { white: 0.3, green: 0.4, blue: 0.5, purple: 0.6, orange: 0.7, red: 0.8 },
+      surplusMin: 3,         // 推荐「分解多余装备」：背包里没人用得上的装备至少这么多件时才提示
+      tidyAt: 10,            // 装备背包攒到这么多件时，弹一次「整理装备」引导（穿更好的、分解多余、升级建筑；可重复）
+    },
+
     // ===== 默认设置 =====
     settings: {
       cardPrompts: true,     // 拿到卡、背包里有可重掷的同名卡时，自动推关停下来提示
       forgeHints: true,      // 可以打造 / 有新装备可穿时在活动条提示（不打断推关）
+      autoSalvage: null,     // 持续制造时自动分解低于这个品质的产出（品质 id，例如 'green' = 白装自动分解）；null = 关
     },
 
     // ===== 挂机 / 战斗计时 =====
@@ -355,4 +405,13 @@
 
   // 调试：时间倍率（1 / 2 / 5 / 10）。作用于研究倒计时、采集产出、挂机间隔、战斗播放；不改战斗结果。在配置网站里改，刷新游戏生效。
   DAO.CONFIG.debug = { timeScale: 1 };
+
+  // 存档：存档位数量、每个存档位保留的自动备份份数和间隔、迁移前原始存档保留份数、写硬盘的节流
+  DAO.CONFIG.saves = {
+    slots: 3,
+    backups: 5,              // 每个存档位轮换保留最近几份自动备份
+    backupEveryMs: 300000,   // 自动保存时，距上一份备份超过这么久才再备份一份（手动保存、回标题页、迁移前总会备份）
+    originals: 3,            // 迁移前的原始存档（按版本区分）保留最近几份
+    diskThrottleMs: 3000,    // 从本地服务打开时，写到硬盘 saves/ 的最短间隔
+  };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

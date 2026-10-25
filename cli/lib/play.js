@@ -58,7 +58,7 @@ function closeSeg(seg, now, save) {
 }
 
 /**
- * @param opts { kind, until (章节 id，打完就停), seeds(i) → { battle, gacha, roll }, solo, snapAt: [关卡 id]（这一关成为最新关时存一份存档快照）,
+ * @param opts { kind, until (章节 id，打完就停), extraMinutes（打完后接着挂机几分钟，引导照常处理）, seeds(i) → { battle, gacha, roll }, solo, snapAt: [关卡 id]（这一关成为最新关时存一份存档快照）,
  *               maxMinutes, stdGatherers }
  */
 function simulate(role, idx, opts) {
@@ -83,13 +83,13 @@ function simulate(role, idx, opts) {
   const advance = (ms, bucket) => {
     if (seg) {
       seg[bucket] += ms;
-      const nL = save.lineup.length, nR = save.research.active ? 1 : 0, nG = save.gather.ids.length, nC = save.crafting ? 1 : 0;
+      const nL = save.lineup.length, nR = save.research.active ? 1 : 0, nG = save.gather.ids.length, nC = Object.keys(G.jobs(save)).length;
       seg.cm.lineup += ms * nL; seg.cm.research += ms * nR; seg.cm.gather += ms * nG; seg.cm.craft += ms * nC;
       seg.cm.idle += ms * Math.max(0, save.roster.length - nL - nR - nG - nC);
     }
     now += ms;
     G.tickGather(save, now);
-    G.tickCraft(save, now);
+    G.tickProduction(save, now);
   };
   const choose = () => {
     const res = G.chooseRecruit(save, G.defaultChoice(save), now);
@@ -104,9 +104,11 @@ function simulate(role, idx, opts) {
 
   let guard = 0;
   while (guard++ < 20000) {
+    if (now - T0 > maxMs) break;
+    if (r.extraEnd != null && now > r.extraEnd) break;
     G.tickResearch(save, now);
     G.tickGather(save, now);
-    G.tickCraft(save, now);
+    G.tickProduction(save, now);
     if (opts.solo && save.guide.queue.length) save.guide.queue = [];
     if (kind === 'std' && !opts.solo) {
       // 研究上阵位：金币够就派闲人去；没有闲人调一个采集的人（智力最高的）
@@ -124,8 +126,10 @@ function simulate(role, idx, opts) {
           const cost = G.recruitCost(save);
           if (G.recruit(save, now, { reason: 'gather' }).ok) { if (seg) { seg.recruits++; seg.recruitGold += cost; } advance(E.guideMs, 'wait'); choose(); }
         }
-        // 打造：按推荐顺序，够了就打
-        for (let u = G.nextUpgrade(save), k = 0; u && u.affordable && (u.kind === 'equip' || save.gold - u.cost.gold >= reserve) && k < 30; u = G.nextUpgrade(save), k++) {
+        // 打造是持续制造：派一次人就一件接一件地做。要攒钱研究上阵位时先召回打造的人（当前这件退还材料），攒够、开始研究后再派
+        if (reserve && save.gold < reserve) for (const k of Object.keys(G.jobs(save))) G.recallProduction(save, k);
+        // 按推荐顺序：穿更好的装备、派人去持续制造、换部位
+        for (let u = G.nextUpgrade(save), k = 0; u && u.affordable && ((u.kind !== 'craft' && u.kind !== 'build') || save.gold - (u.cost.gold || 0) >= reserve) && k < 30; u = G.nextUpgrade(save), k++) {
           G.doUpgrade(save, u, now);
           if (r.firstGearAt == null) r.firstGearAt = now - T0;
           advance(E.forgeMs, 'forge');
@@ -141,7 +145,10 @@ function simulate(role, idx, opts) {
         if (d.guide === 'forge' && info.item && r.firstGearAt == null) r.firstGearAt = now - T0;
         if (d.guide === 'gather' && r.forgeAt == null) r.forgeAt = now - T0;
         if (info.recruit && info.recruit.ok && seg && d.guide !== 'cave') { seg.recruits++; seg.recruitGold += info.recruit.cost; }
-        if (d.guide === 'done:' + chs[untilIdx]) break;
+        if (d.guide === 'done:' + chs[untilIdx]) {
+          if (!opts.extraMinutes) break;
+          if (r.extraEnd == null) r.extraEnd = now + opts.extraMinutes * 60000;   // 打完后再挂机这么久（阶段 4a：看新开放的生产线）
+        }
       } else if (d.reason === 'recruitChoice') choose();
       else if (d.reason === 'recruitDecision') G.resolvePending(save, false);
       else if (d.reason === 'boss') G.confirmBoss(save, d.stageId);
@@ -159,7 +166,7 @@ function simulate(role, idx, opts) {
     if (o.win && !was) r.clears[o.stageId] = { t: now - T0, lv: G.maxLevel(save), slv: G.starter(save).level };
     if (o.win && o.stageId === C.recruit.unlockStage && r.gateAt == null) { r.gateLv = lvBefore; r.gateAt = now - T0; }
     const c2 = curCh();
-    if (c2 !== segCh) {
+    if (c2 !== segCh && seg) {
       closeSeg(seg, now, save);
       r.segs[segCh] = seg;
       if (chs.indexOf(segCh) >= untilIdx) { r.done = true; seg = null; if (opts.stopAtClear) break; }
@@ -167,6 +174,7 @@ function simulate(role, idx, opts) {
       if (!c2) { r.done = true; }
     }
     if (now - T0 > maxMs) break;
+    if (r.extraEnd != null && now > r.extraEnd) break;
   }
   if (seg && !r.segs[segCh]) { closeSeg(seg, now, save); seg.unfinished = true; r.segs[segCh] = seg; }
   r.total = now - T0;

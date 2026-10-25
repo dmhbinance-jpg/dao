@@ -5,6 +5,7 @@
 
 ## 先读这些
 1. 阶段 3.5 交接说明 `docs/STAGE3_5_HANDOFF.md`（配置网站、时间倍率、招募 3 选 1、名额，仍然有效）
+   - 阶段 3.6 之后配置网站调参页默认「按对象」显示（一只怪 / 一关 / 一件装备一张卡片），原列表在「按字段」里；说明见 3.5 交接说明的「调参页」一节和 CHANGELOG 最上面一节。
 2. `docs/CHANGELOG.md` 的「阶段 3.6」一节
 3. 设计文档 v2.1：https://claude.ai/artifact/FWUbcSHc7BRpwMo5Ai4aPS （第 10 节生产）
 

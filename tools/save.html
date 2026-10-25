@@ -14,9 +14,9 @@
 </header>
 <div class="tnote" style="margin:16px 20px 0">
   <b>只对「从同一个本地服务打开的游戏」有效。</b>存档存在浏览器的 localStorage 里，按网址隔离：
-  这一页改的是 <code id="origin"></code> 下的存档，也就是从 <a href="../" target="_blank">这个服务打开的游戏</a>。
+  这一页改的是 <code id="origin"></code> 下的存档，也就是从 <a href="../" target="_blank">这个服务打开的游戏</a>（同时会写到硬盘 saves/）。
   双击 index.html（file://）打开的游戏存档在另一个地方，这里看不到、也改不到。
-  游戏页开着也没关系：这里一改，游戏页会自动重新读入存档。
+  先在上面选要改哪个存档位。游戏页开着这个存档位也没关系：这里一改，游戏页会自动重新读入。
 </div>
 <main class="sgrid" id="app"></main>
 <div class="toasts" id="toasts" aria-live="polite"></div>
@@ -37,8 +37,22 @@
 <script src="../src/battle/damage.js"></script>
 <script src="../src/battle/engine.js"></script>
 <script src="../src/game/clock.js"></script>
-<script src="../src/game/game.js"></script>
+<script src="../src/game/common.js"></script>
+<script src="../src/game/save.js"></script>
+<script src="../src/game/economy.js"></script>
+<script src="../src/game/roster.js"></script>
+<script src="../src/game/progress.js"></script>
+<script src="../src/game/recruit.js"></script>
+<script src="../src/game/research.js"></script>
+<script src="../src/game/buildings.js"></script>
+<script src="../src/game/production.js"></script>
+<script src="../src/game/equipment.js"></script>
+<script src="../src/game/cards.js"></script>
+<script src="../src/game/guide.js"></script>
+<script src="../src/game/auto.js"></script>
+<script src="../src/game/save-slots.js"></script>
 <script src="../src/ui/util.js"></script>
+<script src="../src/ui/save-disk.js"></script>
 <script src="save.js"></script>
 </body>
 </html>
